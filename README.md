@@ -1,31 +1,42 @@
-# Bustime Admin App
+# Private Bustime Admin App
 
-This repository is the new, separate Android admin application for Bustime.
+This repository contains the separate Android owner app for managing Bustime routes, stops, submissions and deleted records.
 
-## Project identity
-- Display name: intentionally not set yet; owner will provide it.
-- Android application ID / package name: intentionally not set yet; owner will provide it.
-- Repository: private app source; do not publish this app to the Play Store.
+## Owner-controlled identity
+- App display name: deliberately blank until the owner supplies it.
+- Android application ID/package: deliberately not selected. Supply it as the GitHub Actions input `application_id` or repository variable `APP_APPLICATION_ID`.
+- Keep this repository private. Never publish the APK to Google Play.
 
-## Implementation scope
-Build the separate owner-only Android app described in the supplied *Bustime MDM Admin App — Complete Spec*.
+## Implemented
+- Kotlin Android Views, built programmatically (no XML layouts).
+- Supabase Auth email/password login; validates the signed-in UID against the configured owner UID.
+- Token refresh and owner-only Bearer authorization for every privileged request.
+- Supabase public publishable key only in the client; service-role key is never included.
+- Room local cache for routes, places and revision cursor.
+- First-install snapshot copied from the public Bustime repository (dataVersion 74, snapshotRevision 14; 49 places, 55 routes), followed by paged delta sync.
+- Route list, correction/edit, add, copy, return (reversed intermediate stops and blank timings), delete.
+- Stop list, add/edit, usage check before delete.
+- Recycle Bin restore and permanent delete.
+- Review Center for all four submission tables; feedback is read-only and only pending/reviewed.
+- English, Hindi and Punjabi language selector and localized primary navigation.
+- GitHub Actions APK workflow, 7-day artifact retention and private GitHub Release.
 
-- Kotlin and Android Views created in code.
-- Supabase Auth email/password sign-in; no legacy short-password screen.
-- Supabase Edge Function is the only privileged write path.
-- Local Room cache for places and routes, populated by revision-based public data sync.
-- Route list/editor, stop list/editor, recycle bin, and review center.
-- English, Hindi, and Punjabi for all visible text.
-- GitHub Actions builds the APK; no local Android Studio requirement.
+## Supabase
+Project: `mdryxbvmqsphbfkvqtnf`
+URL: `https://mdryxbvmqsphbfkvqtnf.supabase.co`
 
-## Backend constraints
-Use the existing Supabase project and existing Edge Functions from the supplied specification. Do not create or alter database tables as part of the initial Android app work. Never put a service-role key, owner password, or signing credentials in app source.
+Existing functions used:
+- `mdm-publish` — privileged actions.
+- `bustime-data-sync` — public status and change feed.
 
-## Owner decisions still pending
-The owner will provide the final app display name and Android application ID/package name. Do not invent either value.
+The `mdm-publish` Edge Function was updated to accept only a valid Supabase Auth Bearer token belonging to the owner. The legacy password body path is no longer accepted. The app does not call `mdm-password`.
 
-## Working rules
-- Make only changes needed for this app.
-- Do not delete or rename existing files without asking.
-- Keep the public Bustime app and this private admin app separate.
-- Verify every GitHub Actions build and report failures clearly.
+The revision counter was reconciled to the maximum change-log revision (92). No database tables or RLS policies were altered.
+
+## Build
+GitHub Actions builds on pushes after `APP_APPLICATION_ID` is configured, or manually via Actions → Build private admin APK → Run workflow, entering the owner's chosen application ID.
+
+The display name and application ID are intentionally not invented in this repository. A stable private signing keystore must also be configured before producing long-term upgradeable owner APKs. See [configuration checklist](docs/CONFIGURATION.md).
+
+## Scope
+Ads, app-content settings, analytics and the public app's update screens remain in Web Admin / public Bustime as described in the supplied rebuild specification. This repository does not modify those projects.
