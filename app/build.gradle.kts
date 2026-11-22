@@ -19,7 +19,20 @@ android {
         versionCode = (project.findProperty("appVersionCode")?.toString()?.toIntOrNull() ?: 1)
         versionName = "1.0"
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    val keyPath = System.getenv("TESTING_KEYSTORE_PATH")
+    val keyFile = keyPath?.let { file(it) }?.takeIf { it.exists() }
+    if (keyFile != null) {
+        signingConfigs.create("ownerKey") {
+            storeFile = keyFile
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("KEY_ALIAS")
+            keyPassword = System.getenv("KEY_PASSWORD")
+        }
+    }
+    buildTypes {
+        getByName("debug") { if (keyFile != null) signingConfig = signingConfigs.getByName("ownerKey") }
+        getByName("release") { isMinifyEnabled = false; if (keyFile != null) signingConfig = signingConfigs.getByName("ownerKey") }
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
