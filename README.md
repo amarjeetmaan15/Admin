@@ -3,8 +3,8 @@
 This repository contains the separate Android owner app for managing Bustime routes, stops, submissions and deleted records.
 
 ## Owner-controlled identity
-- App display name: deliberately blank until the owner supplies it.
-- Android application ID/package: deliberately not selected. Supply it as the GitHub Actions input `application_id` or repository variable `APP_APPLICATION_ID`.
+- App display name: Admin.
+- Android application ID/package: `com.admin` (valid Android package form for the requested Admin identity).
 - Keep this repository private. Never publish the APK to Google Play.
 
 ## Implemented
@@ -34,9 +34,9 @@ The `mdm-publish` Edge Function was updated to accept only a valid Supabase Auth
 The revision counter was reconciled to the maximum change-log revision (92). No database tables or RLS policies were altered.
 
 ## Build
-GitHub Actions builds on pushes after `APP_APPLICATION_ID` is configured, or manually via Actions → Build private admin APK → Run workflow, entering the owner's chosen application ID.
+GitHub Actions builds automatically on pushes using `com.admin`, or manually via Actions → Build Admin APK → Run workflow. The manual application ID input defaults to `com.admin`.
 
-The display name and application ID are intentionally not invented in this repository. A stable private signing keystore must also be configured before producing long-term upgradeable owner APKs. See [configuration checklist](docs/CONFIGURATION.md).
+The app display name is Admin and the Android application ID is `com.admin`. A stable private signing keystore must also be configured before producing long-term upgradeable owner APKs. See [configuration checklist](docs/CONFIGURATION.md).
 
 ## Scope
 Ads, app-content settings, analytics and the public app's update screens remain in Web Admin / public Bustime as described in the supplied rebuild specification. This repository does not modify those projects.
