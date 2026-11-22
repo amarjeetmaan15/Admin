@@ -40,3 +40,6 @@ The display name and application ID are intentionally not invented in this repos
 
 ## Scope
 Ads, app-content settings, analytics and the public app's update screens remain in Web Admin / public Bustime as described in the supplied rebuild specification. This repository does not modify those projects.
+
+## Important repository visibility step
+The repository is currently **public**. The available GitHub connection can create and edit source files but cannot change repository visibility. Before distributing this owner-only app, change it manually in GitHub: open Settings → General → Danger Zone → Change repository visibility → Make private. Confirm the change. Do not add private signing credentials to this repository.
