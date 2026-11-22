@@ -10,11 +10,11 @@ import java.net.URL
 data class Session(val access:String,val refresh:String,val expiresAt:Long)
 class SupabaseApi {
  @Volatile var session:Session?=null
- private suspend fun request(path:String,method:String="GET",body:String?=null,auth:Boolean=true):String=withContext(Dispatchers.IO) {
+ private suspend fun request(path:String,method:String="GET",body:String?=null,auth:Boolean=true,prefer:String?=null):String=withContext(Dispatchers.IO) {
   val c=URL(Config.SUPABASE_URL+path).openConnection() as HttpURLConnection
   try {
    c.requestMethod=method;c.connectTimeout=15000;c.readTimeout=20000
-   c.setRequestProperty("apikey",Config.SUPABASE_PUBLISHABLE_KEY);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Accept","application/json")
+   c.setRequestProperty("apikey",Config.SUPABASE_PUBLISHABLE_KEY);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Accept","application/json");if(prefer!=null)c.setRequestProperty("Prefer",prefer)
    if(auth)session?.let{c.setRequestProperty("Authorization","Bearer "+it.access)}
    if(body!=null){c.doOutput=true;c.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}}
    val code=c.responseCode;val stream=if(code in 200..299)c.inputStream else c.errorStream
