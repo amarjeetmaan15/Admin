@@ -109,13 +109,9 @@ class MainActivity:ComponentActivity() {
    add(menu)
    task{SnapshotSeeder.seed(assets,dao);sync.sync()}
   }else if(selectedTab=="advertisement"){
-   add(text("Advertisement",22,true))
-   add(text("My Advertisement and Start.io Ads will be organized in this section.",14))
-   add(text("This tab is created. Advertisement controls and settings will be added in the next stage.",13))
+   advertisementTab()
   }else{
-   add(text("Analytics & Stats",22,true))
-   add(text("App usage, searches, activity reports and statistics will be organized in this section.",14))
-   add(text("This tab is created. Analytics tracking and report views will be added in the next stage.",13))
+   analyticsTab()
   }
   add(button(tr("Sign out","साइन आउट","ਸਾਈਨ ਆਉਟ"),false){api.session=null;getPreferences(0).edit().clear().apply();login()})
  }
@@ -198,7 +194,7 @@ class MainActivity:ComponentActivity() {
    val grid=GridLayout(this).apply{columnCount=2}
    val stats=listOf("App installations" to installs.toString(),"App sessions" to sessions.toString(),"App opens" to appOpen.toString(),"Bus searches" to busSearch.toString(),"Route details viewed" to detail.toString(),"Recorded events" to events.size.toString())
    stats.forEachIndexed{i,p->val c=LinearLayout(this).apply{orientation=1;setPadding(dp(13),dp(12),dp(13),dp(12));background=GradientDrawable().apply{setColor(0xfff4f7fb.toInt());cornerRadius=dp(12).toFloat();setStroke(dp(1),0xffdce5ef.toInt())};addView(text(p.second,24,true).apply{setTextColor(0xff245b8f.toInt())});addView(text(p.first,12,true).apply{setTextColor(0xff475569.toInt())})};grid.addView(c,GridLayout.LayoutParams().apply{width=0;columnSpec=GridLayout.spec(i%2,1f);rowSpec=GridLayout.spec(i/2);setMargins(dp(4),dp(4),dp(4),dp(4))})}
-   body?.removeViews(3,(body?.childCount?:3)-3);add(grid)
+   body?.removeViews(6,(body?.childCount?:6)-6);add(grid)
    sectionTitle("Activity by event")
    val types=events.groupingBy{it.optString("event_name")}.eachCount().entries.sortedByDescending{it.value}
    if(types.isEmpty())add(text("No recorded events in this period.",13)) else types.forEach{add(panelCard(it.key.replace('_',' ').replaceFirstChar{c->c.uppercase()},it.value.toString()+" events"){})}
