@@ -1,7 +1,7 @@
 package privateadmin.internal
 
 import org.json.JSONArray
-import org.json.JSONObject
+import org.json.JSONObject\nimport org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -40,6 +40,6 @@ class SupabaseApi {
     }
     private fun ensureToken(){if((session?.expiresAt?:0L)<System.currentTimeMillis()/1000+90) refresh()}
     fun publish(body:JSONObject)=JSONObject(request("/functions/v1/mdm-publish","POST",body.toString().also{ensureToken()}))
-    fun syncStatus():JSONObject=JSONObject(request("/functions/v1/bustime-data-sync?action=status","GET",null,false))
+    fun syncStatus():JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=status","GET",null,false))
     fun syncChanges(since:Long,offset:Int):JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=changes&since=$since&offset=$offset","GET",null,false))
 }
