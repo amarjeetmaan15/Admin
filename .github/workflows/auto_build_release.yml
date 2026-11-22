@@ -1,16 +1,16 @@
-name: Build private admin APK
+name: Build Admin APK
 on:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
       application_id:
-        description: "Owner-selected Android applicationId (package name)"
-        required: true
+        description: "Android applicationId (defaults to com.admin)"
+        required: false
+        default: "com.admin"
         type: string
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || vars.APP_APPLICATION_ID != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,13 +23,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Select owner application ID
+      - name: Select application ID
         run: |
-          APP_ID="${{ inputs.application_id || vars.APP_APPLICATION_ID }}"
-          if [ -z "$APP_ID" ]; then
-            echo "Set repository variable APP_APPLICATION_ID or provide workflow_dispatch input."
-            exit 1
-          fi
+          APP_ID="${{ inputs.application_id || vars.APP_APPLICATION_ID || 'com.admin' }}"
           echo "APP_APPLICATION_ID=$APP_ID" >> "$GITHUB_ENV"
       - name: Decode owner signing key when configured
         env:
@@ -45,11 +41,11 @@ jobs:
         run: gradle assembleDebug -PappVersionCode=${{ github.run_number }} -PAPP_APPLICATION_ID="$APP_APPLICATION_ID"
       - uses: actions/upload-artifact@v4
         with:
-          name: Private-Admin-APK
+          name: Admin-APK
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 7
-      - name: Publish private repository release
+      - name: Publish repository release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "build-${{ github.run_number }}" app/build/outputs/apk/debug/*.apk --repo "$GITHUB_REPOSITORY" --title "Private Admin build ${{ github.run_number }}" --notes "Automated private APK build."
+          gh release create "build-${{ github.run_number }}" app/build/outputs/apk/debug/*.apk --repo "$GITHUB_REPOSITORY" --title "Admin build ${{ github.run_number }}" --notes "Automated Admin APK build."
