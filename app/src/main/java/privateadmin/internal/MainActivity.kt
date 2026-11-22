@@ -81,24 +81,42 @@ class MainActivity:ComponentActivity() {
  private fun task(fn:suspend()->Unit){lifecycleScope.launch{try{fn()}catch(e:Exception){toast(e.message?: "Request failed")}}}
  private fun toast(s:String){Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
  private fun login(){pageStack.clear();screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
- private fun home(){pageStack.clear();screen("Bustime Operations",false)
+ private fun home(selectedTab:String="existing"){pageStack.clear();screen("Bustime Operations",false)
   val language=Spinner(this);language.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("English","हिन्दी","ਪੰਜਾਬੀ"));language.setSelection(lang.ordinal);language.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener{override fun onNothingSelected(p:android.widget.AdapterView<*>?){};override fun onItemSelected(p:android.widget.AdapterView<*>?,v:View?,pos:Int,id:Long){lang=UiLanguage.values()[pos];getPreferences(0).edit().putString("lang",lang.name).apply()}};add(language)
-  val menu=GridLayout(this).apply{columnCount=2;useDefaultMargins=false}
-  val tiles=listOf(
-   Triple(tr("Sync now","अभी सिंक करें","ਹੁਣੇ ਸਿੰਕ ਕਰੋ"),0xff2463a6.toInt(),{task{toast("Synced · revision "+sync.sync())}}),
-   Triple(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ"),0xff147d75.toInt(),{routeList()}),
-   Triple(tr("Bus Stop List","बस स्टॉप सूची","ਬੱਸ ਸਟਾਪ ਸੂਚੀ"),0xff3973b9.toInt(),{placeList()}),
-   Triple(tr("Recycle Bin","रिसायकल बिन","ਰੀਸਾਈਕਲ ਬਿਨ"),0xff68758b.toInt(),{recycle()}),
-   Triple(tr("Review Center","रिव्यू सेंटर","ਰੀਵਿਊ ਸੈਂਟਰ"),0xff8057a6.toInt(),{reviews()}),
-   Triple(tr("History","हिस्ट्री","ਇਤਿਹਾਸ"),0xffb36a35.toInt(),{history(true)}),
-   Triple(tr("Add Route","रूट जोड़ें","ਰੂਟ ਜੋੜੋ"),0xff16845f.toInt(),{editRoute(null)}),
-   Triple(tr("Correction Route","रूट सुधारें","ਰੂਟ ਸੋਧੋ"),0xff277b9b.toInt(),{correctionRouteList()}),
-   Triple(tr("Add Bus Stop","बस स्टॉप जोड़ें","ਬੱਸ ਸਟਾਪ ਜੋੜੋ"),0xff4b7c4a.toInt(),{editPlace(null)})
-  )
-  tiles.forEachIndexed{index,item->val tile=homeTile(item.first,item.second,item.third);menu.addView(tile,GridLayout.LayoutParams().apply{width=0;height=dp(64);columnSpec=GridLayout.spec(index%2,1f);rowSpec=GridLayout.spec(index/2);setMargins(dp(4),dp(5),dp(4),dp(5))})}
-  add(menu)
+  val tabs=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+  fun tab(label:String,key:String){
+   val active=selectedTab==key
+   val b=Button(this).apply{text=label;isAllCaps=false;textSize=12f;minHeight=dp(46);setPadding(dp(4),dp(6),dp(4),dp(6));setTextColor(if(active)Color.WHITE else 0xff245b8f.toInt());background=GradientDrawable().apply{setColor(if(active)0xff245b8f.toInt() else 0xffeaf2fb.toInt());cornerRadius=dp(10).toFloat();if(!active)setStroke(dp(1),0xffc8d9ec.toInt())};setOnClickListener{home(key)}}
+   tabs.addView(b,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(3),dp(4),dp(3),dp(10))})
+  }
+  tab("Existing Data","existing");tab("Advertisement","advertisement");tab("Analytics & Stats","analytics")
+  add(tabs)
+  if(selectedTab=="existing"){
+   val menu=GridLayout(this).apply{columnCount=2;useDefaultMargins=false}
+   val tiles=listOf(
+    Triple(tr("Sync now","अभी सिंक करें","ਹੁਣੇ ਸਿੰਕ ਕਰੋ"),0xff2463a6.toInt(),{task{toast("Synced · revision "+sync.sync())}}),
+    Triple(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ"),0xff147d75.toInt(),{routeList()}),
+    Triple(tr("Bus Stop List","बस स्टॉप सूची","ਬੱਸ ਸਟਾਪ ਸੂची"),0xff3973b9.toInt(),{placeList()}),
+    Triple(tr("Recycle Bin","रिसायकल बिन","ਰੀਸਾਈਕਲ ਬਿਨ"),0xff68758b.toInt(),{recycle()}),
+    Triple(tr("Review Center","रिव्यू सेंटर","ਰੀਵਿਊ ਸੈਂਟਰ"),0xff8057a6.toInt(),{reviews()}),
+    Triple(tr("History","हिस्ट्री","ਇਤਿਹਾਸ"),0xffb36a35.toInt(),{history(true)}),
+    Triple(tr("Add Route","रूट जोड़ें","ਰੂਟ ਜੋੜੋ"),0xff16845f.toInt(),{editRoute(null)}),
+    Triple(tr("Correction Route","रूट सुधारें","ਰੂਟ ਸੋਧੋ"),0xff277b9b.toInt(),{correctionRouteList()}),
+    Triple(tr("Add Bus Stop","बस स्टॉप जोड़ें","ਬੱਸ ਸਟਾਪ ਜੋੜੋ"),0xff4b7c4a.toInt(),{editPlace(null)})
+   )
+   tiles.forEachIndexed{index,item->val tile=homeTile(item.first,item.second,item.third);menu.addView(tile,GridLayout.LayoutParams().apply{width=0;height=dp(64);columnSpec=GridLayout.spec(index%2,1f);rowSpec=GridLayout.spec(index/2);setMargins(dp(4),dp(5),dp(4),dp(5))})}
+   add(menu)
+   task{SnapshotSeeder.seed(assets,dao);sync.sync()}
+  }else if(selectedTab=="advertisement"){
+   add(text("Advertisement",22,true))
+   add(text("My Advertisement and Start.io Ads will be organized in this section.",14))
+   add(text("This tab is created. Advertisement controls and settings will be added in the next stage.",13))
+  }else{
+   add(text("Analytics & Stats",22,true))
+   add(text("App usage, searches, activity reports and statistics will be organized in this section.",14))
+   add(text("This tab is created. Analytics tracking and report views will be added in the next stage.",13))
+  }
   add(button(tr("Sign out","साइन आउट","ਸਾਈਨ ਆਉਟ"),false){api.session=null;getPreferences(0).edit().clear().apply();login()})
-  task{SnapshotSeeder.seed(assets,dao);sync.sync()}
  }
  private fun placeName(p:PlaceRow):String{val n=JSONObject(p.names);return n.optString("en").ifBlank{n.optString("hi").ifBlank{n.optString("pa").ifBlank{p.id}}}}
  private fun routeList(){screen(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ"));val q=input("Search routes");add(q);task{sync.sync();showRoutes("")};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{showRoutes(s.toString())}};override fun afterTextChanged(e:android.text.Editable?){}})}
