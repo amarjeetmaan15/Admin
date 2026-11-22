@@ -39,6 +39,7 @@ class SupabaseApi {
  }
  private suspend fun ensureToken(){if((session?.expiresAt?:0L)<System.currentTimeMillis()/1000+90)refresh()}
  suspend fun publish(body:JSONObject):JSONObject {ensureToken();return JSONObject(request("/functions/v1/mdm-publish","POST",body.toString()))}
+ suspend fun history(body:JSONObject):JSONObject {ensureToken();return JSONObject(request("/functions/v1/mdm-history","POST",body.toString()))}
  suspend fun syncStatus():JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=status","GET",null,false))
  suspend fun syncChanges(since:Long,offset:Int):JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=changes&since=$since&offset=$offset","GET",null,false))
 }
