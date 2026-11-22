@@ -17,7 +17,9 @@ import org.json.JSONObject
 class MainActivity:ComponentActivity() {
  private val api=SupabaseApi()
  private var posterUrlField:EditText?=null
- private val posterPicker=registerForActivityResult(ActivityResultContracts.GetContent()){uri->if(uri!=null)task{val mime=contentResolver.getType(uri)?:throw IllegalStateException("Cannot identify image type.");val ext=when(mime){"image/jpeg"->"jpg";"image/png"->"png";"image/webp"->"webp";else->throw IllegalStateException("Use JPG, PNG or WebP image.")};val bytes=contentResolver.openInputStream(uri)?.use{it.readBytes()}?:throw IllegalStateException("Unable to read selected image.");if(bytes.size>8*1024*1024)throw IllegalStateException("Image is larger than 8 MB.");val path="campaign-${System.currentTimeMillis()}-${(100000..999999).random()}.$ext";val url=api.uploadAdPoster(path,bytes,mime);posterUrlField?.setText(url);toast("Poster photo uploaded. Now tap Save My Advertisement.")}}
+ private var posterPreview:ImageView?=null
+ private var uploadedPosterBytes:ByteArray?=null
+ private val posterPicker=registerForActivityResult(ActivityResultContracts.GetContent()){uri->if(uri!=null)task{val mime=contentResolver.getType(uri)?:throw IllegalStateException("Cannot identify image type.");val ext=when(mime){"image/jpeg"->"jpg";"image/png"->"png";"image/webp"->"webp";else->throw IllegalStateException("Use JPG, PNG or WebP image.")};val bytes=contentResolver.openInputStream(uri)?.use{it.readBytes()}?:throw IllegalStateException("Unable to read selected image.");if(bytes.size>8*1024*1024)throw IllegalStateException("Image is larger than 8 MB.");val path="campaign-${System.currentTimeMillis()}-${(100000..999999).random()}.$ext";val url=api.uploadAdPoster(path,bytes,mime);posterUrlField?.setText(url);uploadedPosterBytes=bytes;posterPreview?.setImageBitmap(android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size));posterPreview?.visibility=View.VISIBLE;toast("Poster uploaded. Preview updated. Tap Save My Advertisement.")}}
  private lateinit var dao:LocalDao
  private lateinit var sync:SyncEngine
  private var lang=UiLanguage.EN
@@ -141,7 +143,12 @@ class MainActivity:ComponentActivity() {
   val poster=adField("Poster image URL","https://...",my.optString("poster_url"))
   posterUrlField=poster
   add(button("Upload poster photo",false){posterPicker.launch("image/*")})
-  add(text("Choose JPG, PNG or WebP (maximum 8 MB). After upload, tap Save My Advertisement.",12).apply{setTextColor(0xff64748b.toInt())})
+  add(text("Recommended: 1080 × 1350 px (4:5), JPG, PNG or WebP, maximum 8 MB.",12).apply{setTextColor(0xff64748b.toInt())})
+  val preview=ImageView(this).apply{adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER;visibility=if(poster.text.isBlank())View.GONE else View.VISIBLE;setBackgroundColor(0xfff1f5f9.toInt());setPadding(dp(8),dp(8),dp(8),dp(8))}
+  posterPreview=preview
+  add(preview)
+  if(poster.text.isNotBlank())task{runCatching{withContext(kotlinx.coroutines.Dispatchers.IO){java.net.URL(poster.text.toString()).openStream().use{android.graphics.BitmapFactory.decodeStream(it)}}}.getOrNull()?.let{preview.setImageBitmap(it)}}
+  if(poster.text.isNotBlank())add(button("Delete uploaded poster",false){confirm("Delete the saved campaign poster and clear its URL?"){task{api.deleteAdPoster(poster.text.toString().trim());poster.setText("");preview.setImageDrawable(null);preview.visibility=View.GONE;uploadedPosterBytes=null;toast("Poster deleted and campaign URL cleared.")}}})
   val startDate=adField("Campaign start date (YYYY-MM-DD)","2026-11-22",my.optString("start_date"))
   val endDate=adField("Campaign end date (YYYY-MM-DD)","2026-12-31",my.optString("end_date"))
   val delay=adSpinner("Close button delay",listOf("2 seconds","3 seconds","4 seconds"),(my.optInt("close_delay",3)-2).coerceIn(0,2))
@@ -157,6 +164,12 @@ class MainActivity:ComponentActivity() {
   val linkLabel=adField("Custom link button label","Learn more",my.optString("link_label","Learn more"))
   adToggle("Show custom link button",link){link=it}
   add(button("Save My Advertisement",true){task{
+   val posterValue=poster.text.toString().trim()
+   if(enabled&&posterValue.isBlank())throw IllegalStateException("Upload or enter a poster URL before enabling the campaign.")
+   if(startDate.text.isNotBlank()&&endDate.text.isNotBlank()&&endDate.text.toString()<startDate.text.toString())throw IllegalStateException("Campaign end date must be on/after start date.")
+   if(checkRoute&&targetId.text.isBlank())throw IllegalStateException("Choose a listed target for the selected campaign category.")
+   if(call&&phone.text.isBlank())throw IllegalStateException("Enter a phone number for Call.")
+   if(link&&!url.text.toString().trim().matches(Regex("^https?://.+",RegexOption.IGNORE_CASE)))throw IllegalStateException("Enter a valid http:// or https:// URL.")
    val m=JSONObject(my.toString()).put("enabled",enabled).put("category",listOf("general","bus_route","bus_operator")[category.selectedItemPosition]).put("poster_url",poster.text.toString().trim()).put("start_date",startDate.text.toString().trim()).put("end_date",endDate.text.toString().trim()).put("close_delay",delay.selectedItemPosition+2).put("check_route_enabled",checkRoute).put("target_id",targetId.text.toString().trim()).put("route_id",targetId.text.toString().trim()).put("call_enabled",call).put("phone",phone.text.toString().trim()).put("link_enabled",link).put("url",url.text.toString().trim()).put("link_label",linkLabel.text.toString().trim())
    adConfig.put("my",m);api.saveAdSettings(adConfig);toast("My Advertisement settings saved")
   }})
