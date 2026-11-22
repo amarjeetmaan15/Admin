@@ -19,7 +19,7 @@ class SyncEngine(private val api:SupabaseApi, private val dao:LocalDao) {
     if(row.optString("operation")=="delete"){if(type=="route")dao.deleteRoute(id) else if(type=="place")dao.deletePlace(id)}
     else {
      val p=row.optJSONObject("payload")?:JSONObject()
-     if(type=="place")dao.putPlace(PlaceRow(id,p.optString("kind","place"),p.optJSONObject("name")?.toString()?:"{}"))
+     if(type=="place")dao.putPlace(PlaceRow(id,p.optString("kind","place"),p.optJSONObject("name")?.toString()?:"{}",p.optString("city").ifBlank{null},p.optString("district").ifBlank{null},p.toString()))
      if(type=="route")dao.putRoute(RouteRow(id,p.toString(),p.optString("from"),p.optString("to"),p.optString("time").ifBlank{null}))
     }
     maxSeen=maxOf(maxSeen,row.optLong("revision"))
