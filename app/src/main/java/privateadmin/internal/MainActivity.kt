@@ -182,36 +182,39 @@ class MainActivity:ComponentActivity() {
  }
  private fun renderAnalytics(period:Int){
   task{
-   val all=api.analyticsEvents();val now=System.currentTimeMillis();val days=when(period){0->1;1->7;2->30;else->0}
+   val all=api.analyticsEvents()
+   val now=System.currentTimeMillis()
+   val days=when(period){0->1;1->7;2->30;else->0}
    val cutoff=if(days==0)0L else now-days*86400000L
-   val events=(0 until all.length()).map{all.getJSONObject(it)}.filter{row->runCatching{java.time.Instant.parse(row.optString("created_at")).toEpochMilli()>=cutoff}.getOrDefault(false)}
-   val installs=(0 until all.length()).map{all.getJSONObject(it)}.filter{it.optString("event_name")=="app_install"}.map{it.optString("session_id")}.distinct().size
+   val allRows=mutableListOf<JSONObject>()
+   for(i in 0 until all.length()){val row=all.optJSONObject(i);if(row!=null)allRows.add(row)}
+   val events=mutableListOf<JSONObject>()
+   for(row in allRows){val time=runCatching{java.time.Instant.parse(row.optString("created_at")).toEpochMilli()}.getOrDefault(0L);if(time>=cutoff)events.add(row)}
+   val installs=allRows.filter{it.optString("event_name")=="app_install"}.map{it.optString("session_id")}.distinct().size
    val sessions=events.map{it.optString("session_id")}.filter{it.isNotBlank()}.distinct().size
-   fun count(name:String)=events.count{it.optString("event_name")==name}
+   fun count(name:String):Int=events.count{it.optString("event_name")==name}
    val busSearch=count("bus_route_search")+count("bus_stand_search")
    val detail=count("route_detail_view")
    val appOpen=count("app_open")
    val grid=GridLayout(this).apply{columnCount=2}
-   val stats=listOf("App installations" to installs.toString(),"App sessions" to sessions.toString(),"App opens" to appOpen.toString(),"Bus searches" to busSearch.toString(),"Route details viewed" to detail.toString(),"Recorded events" to events.size.toString())
-   stats.forEachIndexed{i,p->val c=LinearLayout(this).apply{orientation=1;setPadding(dp(13),dp(12),dp(13),dp(12));background=GradientDrawable().apply{setColor(0xfff4f7fb.toInt());cornerRadius=dp(12).toFloat();setStroke(dp(1),0xffdce5ef.toInt())};addView(text(p.second,24,true).apply{setTextColor(0xff245b8f.toInt())});addView(text(p.first,12,true).apply{setTextColor(0xff475569.toInt())})};grid.addView(c,GridLayout.LayoutParams().apply{width=0;columnSpec=GridLayout.spec(i%2,1f);rowSpec=GridLayout.spec(i/2);setMargins(dp(4),dp(4),dp(4),dp(4))})}
+   val stats:List<Pair<String,String>>=listOf("App installations" to installs.toString(),"App sessions" to sessions.toString(),"App opens" to appOpen.toString(),"Bus searches" to busSearch.toString(),"Route details viewed" to detail.toString(),"Recorded events" to events.size.toString())
+   for(i in stats.indices){val p=stats[i];val c=LinearLayout(this).apply{orientation=1;setPadding(dp(13),dp(12),dp(13),dp(12));background=GradientDrawable().apply{setColor(0xfff4f7fb.toInt());cornerRadius=dp(12).toFloat();setStroke(dp(1),0xffdce5ef.toInt())};addView(text(p.second,24,true).apply{setTextColor(0xff245b8f.toInt())});addView(text(p.first,12,true).apply{setTextColor(0xff475569.toInt())})};grid.addView(c,GridLayout.LayoutParams().apply{width=0;columnSpec=GridLayout.spec(i%2,1f);rowSpec=GridLayout.spec(i/2);setMargins(dp(4),dp(4),dp(4),dp(4))})}
    body?.removeViews(7,(body?.childCount?:7)-7);add(grid)
    sectionTitle("Activity by event")
    val types=events.groupingBy{it.optString("event_name")}.eachCount().entries.sortedByDescending{it.value}
-   if(types.isEmpty())add(text("No recorded events in this period.",13)) else types.forEach{add(panelCard(it.key.replace('_',' ').replaceFirstChar{c->c.uppercase()},it.value.toString()+" events"){})}
+   if(types.isEmpty())add(text("No recorded events in this period.",13)) else for(entry in types){add(panelCard(entry.key.replace('_',' ').replaceFirstChar{c->c.uppercase()},entry.value.toString()+" events"){})}
    sectionTitle("Most viewed routes")
    val routeCounts=mutableMapOf<String,Int>();val standCounts=mutableMapOf<String,Int>()
-   events.filter{it.optString("event_name")=="route_detail_view"}.forEach{val id=it.optJSONObject("properties")?.optString("route_id").orEmpty();if(id.isNotBlank())routeCounts[id]=(routeCounts[id]?:0)+1}
-   events.filter{it.optString("event_name")=="bus_stand_search"}.forEach{val id=it.optJSONObject("properties")?.optString("stand_id").orEmpty();if(id.isNotBlank())standCounts[id]=(standCounts[id]?:0)+1}
-   if(routeCounts.isEmpty())add(text("No route-detail events recorded.",12)) else routeCounts.entries.sortedByDescending{it.value}.take(8).forEach{add(panelCard(it.key,it.value.toString()+" views"){})}
+   for(row in events){if(row.optString("event_name")=="route_detail_view"){val id=row.optJSONObject("properties")?.optString("route_id").orEmpty();if(id.isNotBlank())routeCounts[id]=(routeCounts[id]?:0)+1};if(row.optString("event_name")=="bus_stand_search"){val id=row.optJSONObject("properties")?.optString("stand_id").orEmpty();if(id.isNotBlank())standCounts[id]=(standCounts[id]?:0)+1}}
+   if(routeCounts.isEmpty())add(text("No route-detail events recorded.",12)) else for(entry in routeCounts.entries.sortedByDescending{it.value}.take(8)){add(panelCard(entry.key,entry.value.toString()+" views"){})}
    sectionTitle("Most searched bus stands")
-   if(standCounts.isEmpty())add(text("No bus-stand searches recorded.",12)) else standCounts.entries.sortedByDescending{it.value}.take(8).forEach{add(panelCard(it.key,it.value.toString()+" searches"){})}
+   if(standCounts.isEmpty())add(text("No bus-stand searches recorded.",12)) else for(entry in standCounts.entries.sortedByDescending{it.value}.take(8)){add(panelCard(entry.key,entry.value.toString()+" searches"){})}
    sectionTitle("Data coverage")
-   val first=(0 until all.length()).map{all.getJSONObject(it).optString("created_at")}.lastOrNull().orEmpty()
-   add(text("Available records: "+all.length()+" events · First recorded: "+first.take(10)+" · Latest: "+(all.optJSONObject(0)?.optString("created_at")?.take(10)?: "—"),11))
+   val first=allRows.lastOrNull()?.optString("created_at").orEmpty()
+   add(text("Available records: "+allRows.size+" events · First recorded: "+first.take(10)+" · Latest: "+(allRows.firstOrNull()?.optString("created_at")?.take(10)?: "—"),11))
    add(text("Ad earnings are not included: Start.io revenue reporting/API has not been connected. Install counts represent recorded app_install IDs and may count reinstalls.",11).apply{setTextColor(0xff64748b.toInt())})
   }
  }
-
  private fun placeName(p:PlaceRow):String{val n=JSONObject(p.names);return n.optString("en").ifBlank{n.optString("hi").ifBlank{n.optString("pa").ifBlank{p.id}}}}
  private fun routeList(){screen(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ"));val q=input("Search routes");add(q);task{sync.sync();showRoutes("")};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{showRoutes(s.toString())}};override fun afterTextChanged(e:android.text.Editable?){}})}
  private suspend fun showRoutes(q:String){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{it.fromId.contains(q,true)||it.toId.contains(q,true)||it.id.contains(q,true)||it.payload.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));if(rows.isEmpty())add(text("No matching routes",14));rows.forEach{r->val j=JSONObject(r.payload);val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard("$a  →  $b",listOf(r.time?.let{"Time: $it"},j.optString("service").takeIf{it.isNotBlank()}).filterNotNull().joinToString("  ·  ")){routeDetail(r)})}}
