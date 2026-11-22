@@ -56,16 +56,18 @@ class MainActivity:ComponentActivity() {
  private fun routeList(){screen(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ"));val q=input("Search routes");add(q);task{sync.sync();showRoutes("")};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{showRoutes(s.toString())}};override fun afterTextChanged(e:android.text.Editable?){}})}
  private suspend fun showRoutes(q:String){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{it.fromId.contains(q,true)||it.toId.contains(q,true)||it.id.contains(q,true)||it.payload.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));if(rows.isEmpty())add(text("No matching routes",14));rows.forEach{r->val j=JSONObject(r.payload);val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard("$a  →  $b",listOf(r.time?.let{"Time: $it"},j.optString("service").takeIf{it.isNotBlank()}).filterNotNull().joinToString("  ·  ")){routeDetail(r)})}}
  private fun routeDetail(r:RouteRow){
-  val j=JSONObject(r.payload);val places=runCatching{dao.allPlaces()}.getOrDefault(emptyList())
-  screen("Route details");add(text(placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"))+" → "+placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}")),20,true))
-  add(text("Service: "+j.optString("service").ifBlank{"—"}+"   ·   First time: "+r.time.orEmpty(),12))
-  val stops=mutableListOf<Pair<String,String>>();stops.add(r.fromId to j.optString("time"))
-  val a=j.optJSONArray("stops")?:JSONArray();for(i in 0 until a.length()){val x=a.optJSONObject(i);if(x!=null)stops.add(x.optString("place") to x.optString("time"))}
-  stops.add(r.toId to "")
-  stops.forEachIndexed{idx,p->val name=places.firstOrNull{it.id==p.first}?.let{placeName(it)}?:p.first;add(text((idx+1).toString()+". "+name+"    "+p.second.ifBlank{"—"},14))}
-  add(button("Correct this route"){editRoute(r)});add(button("Copy Route"){editRoute(r,true)});add(button("Return Route"){editRoute(r,false,true)})
-  add(button("Delete route",false){confirm("Move this route to Recycle Bin?"){task{val res=publishChange("route",r.id,"delete",j);toast("Published successfully · revision "+res.optLong("revision"));sync.sync();routeList()}}})
-}
+  task{
+   val j=JSONObject(r.payload);val places=dao.allPlaces()
+   screen("Route details");add(text(placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"))+" → "+placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}")),20,true))
+   add(text("Service: "+j.optString("service").ifBlank{"—"}+"   ·   First time: "+r.time.orEmpty(),12))
+   val stops=mutableListOf<Pair<String,String>>();stops.add(r.fromId to j.optString("time"))
+   val a=j.optJSONArray("stops")?:JSONArray();for(i in 0 until a.length()){val x=a.optJSONObject(i);if(x!=null)stops.add(x.optString("place") to x.optString("time"))}
+   stops.add(r.toId to "")
+   stops.forEachIndexed{idx,p->val name=places.firstOrNull{it.id==p.first}?.let{placeName(it)}?:p.first;add(text((idx+1).toString()+". "+name+"    "+p.second.ifBlank{"—"},14))}
+   add(button("Correct this route"){editRoute(r)});add(button("Copy Route"){editRoute(r,true)});add(button("Return Route"){editRoute(r,false,true)})
+   add(button("Delete route",false){confirm("Move this route to Recycle Bin?"){task{val res=publishChange("route",r.id,"delete",j);toast("Published successfully · revision "+res.optLong("revision"));sync.sync();routeList()}}})
+  }
+ }
  private suspend fun publishChange(type:String,id:String,op:String,payload:JSONObject)=api.publish(JSONObject().put("action","publish").put("changes",JSONArray().put(JSONObject().put("entity_type",type).put("entity_id",id).put("operation",op).put("payload",payload))))
 
  private fun correctionRouteList(){routeListForCorrection()}
