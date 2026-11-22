@@ -81,6 +81,7 @@ class MainActivity:ComponentActivity() {
  private fun task(fn:suspend()->Unit){lifecycleScope.launch{try{fn()}catch(e:Exception){toast(e.message?: "Request failed")}}}
  private fun toast(s:String){Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
  private fun login(){pageStack.clear();screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
+ private var adConfig=JSONObject()
  private fun home(selectedTab:String="existing"){pageStack.clear();screen("Bustime Operations",false)
   val language=Spinner(this);language.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("English","हिन्दी","ਪੰਜਾਬੀ"));language.setSelection(lang.ordinal);language.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener{override fun onNothingSelected(p:android.widget.AdapterView<*>?){};override fun onItemSelected(p:android.widget.AdapterView<*>?,v:View?,pos:Int,id:Long){lang=UiLanguage.values()[pos];getPreferences(0).edit().putString("lang",lang.name).apply()}};add(language)
   val tabs=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
@@ -118,6 +119,103 @@ class MainActivity:ComponentActivity() {
   }
   add(button(tr("Sign out","साइन आउट","ਸਾਈਨ ਆਉਟ"),false){api.session=null;getPreferences(0).edit().clear().apply();login()})
  }
+
+ private fun sectionTitle(title:String,subtitle:String=""){add(text(title,18,true));if(subtitle.isNotBlank())add(text(subtitle,12).apply{setTextColor(0xff64748b.toInt())})}
+ private fun adToggle(label:String,checked:Boolean,onChange:(Boolean)->Unit):Switch {val v=Switch(this).apply{text=label;isChecked=checked;textSize=14f;setPadding(dp(4),dp(8),dp(4),dp(8));setOnCheckedChangeListener{_,b->onChange(b)}};add(v);return v}
+ private fun adField(label:String,hint:String,value:String=""):EditText {add(text(label,13,true));return input(hint,value).also{add(it)}}
+ private fun adSpinner(label:String,items:List<String>,selected:Int):Spinner {add(text(label,13,true));val v=Spinner(this);v.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,items);v.setSelection(selected.coerceIn(0,items.lastIndex));add(v);return v}
+ private fun advertisementTab(){
+  sectionTitle("Advertisement","Manage the in-app campaign poster and Start.io ad placements. Settings are shared with the app.")
+  val tabs=LinearLayout(this).apply{orientation=0}
+  tabs.addView(button("↻ Refresh settings",false){task{adConfig=api.loadAdSettings();home("advertisement")}},LinearLayout.LayoutParams(0,dp(46),1f))
+  add(tabs)
+  task{adConfig=api.loadAdSettings();renderAdvertisement()}
+ }
+ private fun renderAdvertisement(){
+  body?.removeViews(2,(body?.childCount?:2)-2)
+  val my=adConfig.optJSONObject("my")?:JSONObject()
+  val start=adConfig.optJSONObject("startio")?:JSONObject()
+  sectionTitle("My Advertisement","A dismissible promotional poster shown inside the app.")
+  var enabled=my.optBoolean("enabled",false)
+  adToggle("Enable campaign",enabled){enabled=it}
+  val category=adSpinner("Campaign category",listOf("General promotion","Bus Route","Bus Operator / Book Bus"),when(my.optString("category","general")){"bus_route"->1;"bus_operator"->2;else->0})
+  val poster=adField("Poster image URL","https://...",my.optString("poster_url"))
+  val startDate=adField("Campaign start date (YYYY-MM-DD)","2026-11-22",my.optString("start_date"))
+  val endDate=adField("Campaign end date (YYYY-MM-DD)","2026-12-31",my.optString("end_date"))
+  val delay=adSpinner("Close button delay",listOf("2 seconds","3 seconds","4 seconds"),(my.optInt("close_delay",3)-2).coerceIn(0,2))
+  sectionTitle("Campaign actions","Choose which action buttons appear with the poster.")
+  var checkRoute=my.optBoolean("check_route_enabled",false)
+  var call=my.optBoolean("call_enabled",false)
+  var link=my.optBoolean("link_enabled",false)
+  adToggle("Show route / booking button",checkRoute){checkRoute=it}
+  val targetId=adField("Target listing ID (optional)","Route or operator ID",my.optString("target_id",my.optString("route_id")))
+  val phone=adField("Call phone number","+91...",my.optString("phone"))
+  adToggle("Show Call button",call){call=it}
+  val url=adField("Custom link URL","https://...",my.optString("url"))
+  val linkLabel=adField("Custom link button label","Learn more",my.optString("link_label","Learn more"))
+  adToggle("Show custom link button",link){link=it}
+  add(button("Save My Advertisement",true){task{
+   val m=JSONObject(my.toString()).put("enabled",enabled).put("category",listOf("general","bus_route","bus_operator")[category.selectedItemPosition]).put("poster_url",poster.text.toString().trim()).put("start_date",startDate.text.toString().trim()).put("end_date",endDate.text.toString().trim()).put("close_delay",delay.selectedItemPosition+2).put("check_route_enabled",checkRoute).put("target_id",targetId.text.toString().trim()).put("route_id",targetId.text.toString().trim()).put("call_enabled",call).put("phone",phone.text.toString().trim()).put("link_enabled",link).put("url",url.text.toString().trim()).put("link_label",linkLabel.text.toString().trim())
+   adConfig.put("my",m);api.saveAdSettings(adConfig);toast("My Advertisement settings saved")
+  }})
+  add(View(this).apply{setBackgroundColor(0xffe2e8f0.toInt())},LinearLayout.LayoutParams(-1,dp(1)).apply{topMargin=dp(16);bottomMargin=dp(16)})
+  sectionTitle("Start.io Ads","Configure the Start.io app ID and decide where ad placements may appear.")
+  val appId=adField("Start.io App ID","Enter Start.io App ID",start.optString("app_id"))
+  var banner=start.optBoolean("banner_enabled",false);var mainBanner=start.optBoolean("main_banner_enabled",false);var bookBanner=start.optBoolean("book_bus_banner_enabled",false)
+  var native=start.optBoolean("native_enabled",false);var resultsNative=start.optBoolean("results_native_enabled",false);var full=start.optBoolean("fullscreen_enabled",false)
+  adToggle("Enable banner ads",banner){banner=it}
+  adToggle("Main screen banner",mainBanner){mainBanner=it}
+  adToggle("Book Bus screen banner",bookBanner){bookBanner=it}
+  adToggle("Enable native ads",native){native=it}
+  adToggle("Native ads in search results",resultsNative){resultsNative=it}
+  adToggle("Enable full-screen ads",full){full=it}
+  val busEvery=adField("Show full-screen ad after how many bus actions","4",start.optInt("bus_every",4).toString())
+  val fullEvery=adField("Full-screen frequency counter","5",start.optInt("fullscreen_every",5).toString())
+  add(text("Note: These settings only configure placements. Ads will serve only after the Android app build includes the matching Start.io SDK and placement IDs.",12).apply{setTextColor(0xff9a5b13.toInt())})
+  add(button("Save Start.io Settings",true){task{
+   val st=JSONObject(start.toString()).put("app_id",appId.text.toString().trim()).put("banner_enabled",banner).put("main_banner_enabled",mainBanner).put("book_bus_banner_enabled",bookBanner).put("native_enabled",native).put("results_native_enabled",resultsNative).put("fullscreen_enabled",full).put("bus_every",busEvery.text.toString().toIntOrNull()?.coerceIn(1,100)?:4).put("fullscreen_every",fullEvery.text.toString().toIntOrNull()?.coerceIn(1,100)?:5)
+   adConfig.put("startio",st);api.saveAdSettings(adConfig);toast("Start.io settings saved")
+  }})
+  add(text("Last saved configuration is stored in Supabase and shared with the Web Admin.",11).apply{setTextColor(0xff64748b.toInt())})
+ }
+ private fun analyticsTab(){
+  sectionTitle("Analytics & Stats","Live report from recorded app events in Supabase. Select a period and refresh.")
+  val period=Spinner(this);period.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("Today","Last 7 days","Last 30 days","All recorded"));add(text("Report period",13,true));add(period)
+  add(button("↻ Refresh analytics"){task{renderAnalytics(period.selectedItemPosition)}})
+  task{renderAnalytics(1)}
+ }
+ private fun renderAnalytics(period:Int){
+  task{
+   val all=api.analyticsEvents();val now=System.currentTimeMillis();val days=when(period){0->1;1->7;2->30;else->0}
+   val cutoff=if(days==0)0L else now-days*86400000L
+   val events=(0 until all.length()).map{all.getJSONObject(it)}.filter{row->runCatching{java.time.Instant.parse(row.optString("created_at")).toEpochMilli()>=cutoff}.getOrDefault(false)}
+   val installs=(0 until all.length()).map{all.getJSONObject(it)}.filter{it.optString("event_name")=="app_install"}.map{it.optString("session_id")}.distinct().size
+   val sessions=events.map{it.optString("session_id")}.filter{it.isNotBlank()}.distinct().size
+   fun count(name:String)=events.count{it.optString("event_name")==name}
+   val busSearch=count("bus_route_search")+count("bus_stand_search")
+   val detail=count("route_detail_view")
+   val appOpen=count("app_open")
+   val grid=GridLayout(this).apply{columnCount=2}
+   val stats=listOf("App installations" to installs.toString(),"App sessions" to sessions.toString(),"App opens" to appOpen.toString(),"Bus searches" to busSearch.toString(),"Route details viewed" to detail.toString(),"Recorded events" to events.size.toString())
+   stats.forEachIndexed{i,p->val c=LinearLayout(this).apply{orientation=1;setPadding(dp(13),dp(12),dp(13),dp(12));background=GradientDrawable().apply{setColor(0xfff4f7fb.toInt());cornerRadius=dp(12).toFloat();setStroke(dp(1),0xffdce5ef.toInt())};addView(text(p.second,24,true).apply{setTextColor(0xff245b8f.toInt())});addView(text(p.first,12,true).apply{setTextColor(0xff475569.toInt())})};grid.addView(c,GridLayout.LayoutParams().apply{width=0;columnSpec=GridLayout.spec(i%2,1f);rowSpec=GridLayout.spec(i/2);setMargins(dp(4),dp(4),dp(4),dp(4))})}
+   body?.removeViews(3,(body?.childCount?:3)-3);add(grid)
+   sectionTitle("Activity by event")
+   val types=events.groupingBy{it.optString("event_name")}.eachCount().entries.sortedByDescending{it.value}
+   if(types.isEmpty())add(text("No recorded events in this period.",13)) else types.forEach{add(panelCard(it.key.replace('_',' ').replaceFirstChar{c->c.uppercase()},it.value.toString()+" events"){})}
+   sectionTitle("Most viewed routes")
+   val routeCounts=mutableMapOf<String,Int>();val standCounts=mutableMapOf<String,Int>()
+   events.filter{it.optString("event_name")=="route_detail_view"}.forEach{val id=it.optJSONObject("properties")?.optString("route_id").orEmpty();if(id.isNotBlank())routeCounts[id]=(routeCounts[id]?:0)+1}
+   events.filter{it.optString("event_name")=="bus_stand_search"}.forEach{val id=it.optJSONObject("properties")?.optString("stand_id").orEmpty();if(id.isNotBlank())standCounts[id]=(standCounts[id]?:0)+1}
+   if(routeCounts.isEmpty())add(text("No route-detail events recorded.",12)) else routeCounts.entries.sortedByDescending{it.value}.take(8).forEach{add(panelCard(it.key,it.value.toString()+" views"){})}
+   sectionTitle("Most searched bus stands")
+   if(standCounts.isEmpty())add(text("No bus-stand searches recorded.",12)) else standCounts.entries.sortedByDescending{it.value}.take(8).forEach{add(panelCard(it.key,it.value.toString()+" searches"){})}
+   sectionTitle("Data coverage")
+   val first=(0 until all.length()).map{all.getJSONObject(it).optString("created_at")}.lastOrNull().orEmpty()
+   add(text("Available records: "+all.length()+" events · First recorded: "+first.take(10)+" · Latest: "+(all.optJSONObject(0)?.optString("created_at")?.take(10)?: "—"),11))
+   add(text("Ad earnings are not included: Start.io revenue reporting/API has not been connected. Install counts represent recorded app_install IDs and may count reinstalls.",11).apply{setTextColor(0xff64748b.toInt())})
+  }
+ }
+
  private fun placeName(p:PlaceRow):String{val n=JSONObject(p.names);return n.optString("en").ifBlank{n.optString("hi").ifBlank{n.optString("pa").ifBlank{p.id}}}}
  private fun routeList(){screen(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ"));val q=input("Search routes");add(q);task{sync.sync();showRoutes("")};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{showRoutes(s.toString())}};override fun afterTextChanged(e:android.text.Editable?){}})}
  private suspend fun showRoutes(q:String){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{it.fromId.contains(q,true)||it.toId.contains(q,true)||it.id.contains(q,true)||it.payload.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));if(rows.isEmpty())add(text("No matching routes",14));rows.forEach{r->val j=JSONObject(r.payload);val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard("$a  →  $b",listOf(r.time?.let{"Time: $it"},j.optString("service").takeIf{it.isNotBlank()}).filterNotNull().joinToString("  ·  ")){routeDetail(r)})}}
