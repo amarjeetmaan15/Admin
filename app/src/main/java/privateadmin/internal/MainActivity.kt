@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.widget.*
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -15,6 +16,8 @@ import org.json.JSONObject
 
 class MainActivity:ComponentActivity() {
  private val api=SupabaseApi()
+ private var posterUrlField:EditText?=null
+ private val posterPicker=registerForActivityResult(ActivityResultContracts.GetContent()){uri->if(uri!=null)task{val mime=contentResolver.getType(uri)?:throw IllegalStateException("Cannot identify image type.");val ext=when(mime){"image/jpeg"->"jpg";"image/png"->"png";"image/webp"->"webp";else->throw IllegalStateException("Use JPG, PNG or WebP image.")};val bytes=contentResolver.openInputStream(uri)?.use{it.readBytes()}?:throw IllegalStateException("Unable to read selected image.");if(bytes.size>8*1024*1024)throw IllegalStateException("Image is larger than 8 MB.");val path="campaign-${System.currentTimeMillis()}-${(100000..999999).random()}.$ext";val url=api.uploadAdPoster(path,bytes,mime);posterUrlField?.setText(url);toast("Poster photo uploaded. Now tap Save My Advertisement.")}}
  private lateinit var dao:LocalDao
  private lateinit var sync:SyncEngine
  private var lang=UiLanguage.EN
@@ -136,6 +139,9 @@ class MainActivity:ComponentActivity() {
   adToggle("Enable campaign",enabled){enabled=it}
   val category=adSpinner("Campaign category",listOf("General promotion","Bus Route","Bus Operator / Book Bus"),when(my.optString("category","general")){"bus_route"->1;"bus_operator"->2;else->0})
   val poster=adField("Poster image URL","https://...",my.optString("poster_url"))
+  posterUrlField=poster
+  add(button("Upload poster photo",false){posterPicker.launch("image/*")})
+  add(text("Choose JPG, PNG or WebP (maximum 8 MB). After upload, tap Save My Advertisement.",12).apply{setTextColor(0xff64748b.toInt())})
   val startDate=adField("Campaign start date (YYYY-MM-DD)","2026-11-22",my.optString("start_date"))
   val endDate=adField("Campaign end date (YYYY-MM-DD)","2026-12-31",my.optString("end_date"))
   val delay=adSpinner("Close button delay",listOf("2 seconds","3 seconds","4 seconds"),(my.optInt("close_delay",3)-2).coerceIn(0,2))
