@@ -42,4 +42,9 @@ class SupabaseApi {
  suspend fun history(body:JSONObject):JSONObject {ensureToken();return JSONObject(request("/functions/v1/mdm-history","POST",body.toString()))}
  suspend fun syncStatus():JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=status","GET",null,false))
  suspend fun syncChanges(since:Long,offset:Int):JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=changes&since=$since&offset=$offset","GET",null,false))
+
+ suspend fun loadAdSettings():JSONObject {ensureToken();val rows=JSONArray(request("/rest/v1/ad_settings?select=config&id=eq.1","GET"));return rows.optJSONObject(0)?.optJSONObject("config")?:JSONObject()}
+ suspend fun saveAdSettings(config:JSONObject){ensureToken();request("/rest/v1/ad_settings?on_conflict=id","POST",JSONObject().put("id",1).put("config",config).put("updated_at",java.time.Instant.now().toString()).toString(),true,"resolution=merge-duplicates,return=minimal")}
+ suspend fun analyticsEvents():JSONArray {ensureToken();return JSONArray(request("/rest/v1/analytics_events?select=id,created_at,event_name,section,session_id,properties,app_version,platform&order=created_at.desc&limit=5000","GET"))}
+
 }
