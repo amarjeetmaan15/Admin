@@ -20,6 +20,7 @@ class MainActivity:ComponentActivity() {
  private var lang=UiLanguage.EN
  private var body:LinearLayout?=null
  private fun tr(a:String,b:String,c:String)=uiText(a,b,c,lang)
+ private fun dp(value:Int):Int=(value*resources.displayMetrics.density+0.5f).toInt()
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);dao=LocalDb.get(this).dao();sync=SyncEngine(api,dao);lang=runCatching{UiLanguage.valueOf(getPreferences(0).getString("lang","EN")!!)}.getOrDefault(UiLanguage.EN)
   val p=getPreferences(0);if(p.contains("access")){api.session=Session(p.getString("access","")!!,p.getString("refresh","")!!,p.getLong("expiry",0));home()}else login()
  }
