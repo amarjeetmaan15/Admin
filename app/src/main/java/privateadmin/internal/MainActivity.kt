@@ -154,7 +154,7 @@ class MainActivity:ComponentActivity() {
    val m=JSONObject(my.toString()).put("enabled",enabled).put("category",listOf("general","bus_route","bus_operator")[category.selectedItemPosition]).put("poster_url",poster.text.toString().trim()).put("start_date",startDate.text.toString().trim()).put("end_date",endDate.text.toString().trim()).put("close_delay",delay.selectedItemPosition+2).put("check_route_enabled",checkRoute).put("target_id",targetId.text.toString().trim()).put("route_id",targetId.text.toString().trim()).put("call_enabled",call).put("phone",phone.text.toString().trim()).put("link_enabled",link).put("url",url.text.toString().trim()).put("link_label",linkLabel.text.toString().trim())
    adConfig.put("my",m);api.saveAdSettings(adConfig);toast("My Advertisement settings saved")
   }})
-  add(View(this).apply{setBackgroundColor(0xffe2e8f0.toInt())},LinearLayout.LayoutParams(-1,dp(1)).apply{topMargin=dp(16);bottomMargin=dp(16)})
+  add(View(this).apply{setBackgroundColor(0xffe2e8f0.toInt())})
   sectionTitle("Start.io Ads","Configure the Start.io app ID and decide where ad placements may appear.")
   val appId=adField("Start.io App ID","Enter Start.io App ID",start.optString("app_id"))
   var banner=start.optBoolean("banner_enabled",false);var mainBanner=start.optBoolean("main_banner_enabled",false);var bookBanner=start.optBoolean("book_bus_banner_enabled",false)
