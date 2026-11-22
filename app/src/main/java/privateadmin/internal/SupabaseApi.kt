@@ -43,6 +43,21 @@ class SupabaseApi {
  suspend fun syncStatus():JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=status","GET",null,false))
  suspend fun syncChanges(since:Long,offset:Int):JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=changes&since=$since&offset=$offset","GET",null,false))
 
+ suspend fun uploadAdPoster(path:String,bytes:ByteArray,mime:String):String=withContext(Dispatchers.IO) {
+  ensureToken()
+  val safePath=path.split("/").joinToString("/") { java.net.URLEncoder.encode(it,"UTF-8").replace("+","%20") }
+  val c=URL(Config.SUPABASE_URL.trimEnd('/')+"/storage/v1/object/ads-posters/"+safePath).openConnection() as HttpURLConnection
+  try {
+   c.requestMethod="POST";c.connectTimeout=20000;c.readTimeout=30000;c.doOutput=true
+   c.setRequestProperty("apikey",Config.SUPABASE_PUBLISHABLE_KEY)
+   c.setRequestProperty("Authorization","Bearer "+(session?.access?:throw IllegalStateException("Please sign in again.")))
+   c.setRequestProperty("Content-Type",mime);c.setRequestProperty("x-upsert","false")
+   c.outputStream.use{it.write(bytes)}
+   val code=c.responseCode
+   if(code !in 200..299){val detail=(if(code>=400)c.errorStream else c.inputStream)?.bufferedReader()?.use{it.readText()}.orEmpty();throw IllegalStateException("Poster upload failed (HTTP "+code+"): "+detail)}
+   Config.SUPABASE_URL.trimEnd()+"/storage/v1/object/public/ads-posters/"+safePath
+  } finally {c.disconnect()}
+ }
  suspend fun loadAdSettings():JSONObject {ensureToken();val rows=JSONArray(request("/rest/v1/ad_settings?select=config&id=eq.1","GET"));return rows.optJSONObject(0)?.optJSONObject("config")?:JSONObject()}
  suspend fun saveAdSettings(config:JSONObject){ensureToken();request("/rest/v1/ad_settings?on_conflict=id","POST",JSONObject().put("id",1).put("config",config).put("updated_at",java.time.Instant.now().toString()).toString(),true,"resolution=merge-duplicates,return=minimal")}
  suspend fun analyticsEvents():JSONArray {ensureToken();return JSONArray(request("/rest/v1/analytics_events?select=id,created_at,event_name,section,session_id,properties,app_version,platform&order=created_at.desc&limit=5000","GET"))}
