@@ -1,0 +1,44 @@
+name: Build private admin APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      application_id:
+        description: "Owner-selected Android applicationId (package name)"
+        required: true
+        type: string
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Select owner application ID
+        run: |
+          APP_ID="${{ inputs.application_id || vars.APP_APPLICATION_ID }}"
+          if [ -z "$APP_ID" ]; then
+            echo "Set repository variable APP_APPLICATION_ID or provide workflow_dispatch input."
+            exit 1
+          fi
+          echo "APP_APPLICATION_ID=$APP_ID" >> "$GITHUB_ENV"
+      - name: Build debug APK
+        run: gradle assembleDebug -PappVersionCode=${{ github.run_number }} -PAPP_APPLICATION_ID="$APP_APPLICATION_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Private-Admin-APK
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+      - name: Publish private repository release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" app/build/outputs/apk/debug/*.apk --repo "$GITHUB_REPOSITORY" --title "Private Admin build ${{ github.run_number }}" --notes "Automated private APK build."
