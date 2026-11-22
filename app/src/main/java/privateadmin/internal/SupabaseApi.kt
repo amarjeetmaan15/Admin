@@ -58,6 +58,19 @@ class SupabaseApi {
    Config.SUPABASE_URL.trimEnd()+"/storage/v1/object/public/ads-posters/"+safePath
   } finally {c.disconnect()}
  }
+ suspend fun deleteAdPoster(savedUrl:String){ensureToken()
+  val base=Config.SUPABASE_URL.trimEnd('/')
+  val marker="/storage/v1/object/public/ads-posters/"
+  val at=savedUrl.indexOf(marker)
+  if(at<0||savedUrl.substring(0,at)!=base)throw IllegalStateException("The saved poster is not a managed ads-posters file.")
+  val path=try{java.net.URLDecoder.decode(savedUrl.substring(at+marker.length).substringBefore("?"),"UTF-8")}catch(_:Exception){throw IllegalStateException("The saved poster URL is invalid.")}
+  if(path.isBlank()||path.split("/").any{it.isBlank()||it=="."||it==".."})throw IllegalStateException("The saved poster path is invalid.")
+  val current=loadAdSettings();val my=current.optJSONObject("my")?:JSONObject()
+  my.put("poster_url","");current.put("my",my);saveAdSettings(current)
+  val encoded=path.split("/").joinToString("/") { java.net.URLEncoder.encode(it,"UTF-8").replace("+","%20") }
+  val c=URL(base+"/storage/v1/object/ads-posters/"+encoded).openConnection() as HttpURLConnection
+  try{c.requestMethod="DELETE";c.connectTimeout=20000;c.readTimeout=30000;c.setRequestProperty("apikey",Config.SUPABASE_PUBLISHABLE_KEY);c.setRequestProperty("Authorization","Bearer "+(session?.access?:throw IllegalStateException("Please sign in again.")));val code=c.responseCode;if(code !in 200..299){val detail=c.errorStream?.bufferedReader()?.use{it.readText()}.orEmpty();throw IllegalStateException("Poster URL cleared, but Storage deletion failed (HTTP "+code+"): "+detail)}}finally{c.disconnect()}
+ }
  suspend fun loadAdSettings():JSONObject {ensureToken();val rows=JSONArray(request("/rest/v1/ad_settings?select=config&id=eq.1","GET"));return rows.optJSONObject(0)?.optJSONObject("config")?:JSONObject()}
  suspend fun saveAdSettings(config:JSONObject){ensureToken();request("/rest/v1/ad_settings?on_conflict=id","POST",JSONObject().put("id",1).put("config",config).put("updated_at",java.time.Instant.now().toString()).toString(),true,"resolution=merge-duplicates,return=minimal")}
  suspend fun analyticsEvents():JSONArray {ensureToken();return JSONArray(request("/rest/v1/analytics_events?select=id,created_at,event_name,section,session_id,properties,app_version,platform&order=created_at.desc&limit=5000","GET"))}
