@@ -10,6 +10,7 @@ on:
         type: string
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || vars.APP_APPLICATION_ID != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
