@@ -21,6 +21,20 @@ class MainActivity:ComponentActivity() {
  private var body:LinearLayout?=null
  private fun tr(a:String,b:String,c:String)=uiText(a,b,c,lang)
  private fun dp(value:Int):Int=(value*resources.displayMetrics.density+0.5f).toInt()
+ private class ClockGlyphView(context:android.content.Context):View(context){
+  private val p=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+  override fun onDraw(canvas:android.graphics.Canvas){
+   super.onDraw(canvas)
+   val cx=width/2f;val cy=height/2f;val radius=minOf(width,height)*0.43f
+   p.style=android.graphics.Paint.Style.FILL;p.color=0xffeaf2fb.toInt();canvas.drawCircle(cx,cy,radius,p)
+   p.style=android.graphics.Paint.Style.STROKE;p.strokeWidth=resources.displayMetrics.density*1.8f;p.color=0xff245b8f.toInt();canvas.drawCircle(cx,cy,radius,p)
+   for(i in 0 until 12){val a=Math.PI*i/6.0;val outer=radius*0.78f;val inner=radius*(if(i%3==0)0.57f else 0.68f);p.strokeWidth=resources.displayMetrics.density*(if(i%3==0)1.8f else 1.1f);canvas.drawLine(cx+Math.sin(a).toFloat()*inner,cy-Math.cos(a).toFloat()*inner,cx+Math.sin(a).toFloat()*outer,cy-Math.cos(a).toFloat()*outer,p)}
+   p.strokeCap=android.graphics.Paint.Cap.ROUND;p.strokeWidth=resources.displayMetrics.density*2.5f
+   canvas.drawLine(cx,cy,cx,cy-radius*0.48f,p)
+   canvas.drawLine(cx,cy,cx+radius*0.38f,cy+radius*0.20f,p)
+   p.style=android.graphics.Paint.Style.FILL;canvas.drawCircle(cx,cy,resources.displayMetrics.density*2.2f,p)
+  }
+ }
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);onBackPressedDispatcher.addCallback(this,object:androidx.activity.OnBackPressedCallback(true){override fun handleOnBackPressed(){goBack()}});dao=LocalDb.get(this).dao();sync=SyncEngine(api,dao);lang=runCatching{UiLanguage.valueOf(getPreferences(0).getString("lang","EN")!!)}.getOrDefault(UiLanguage.EN)
   val p=getPreferences(0);if(p.contains("access")){api.session=Session(p.getString("access","")!!,p.getString("refresh","")!!,p.getLong("expiry",0));home()}else login()
  }
@@ -150,17 +164,17 @@ class MainActivity:ComponentActivity() {
    name.setOnItemClickListener{_,_,pos,_->val p=choices[pos];d.put("place_id",p.id).put("name",placeName(p))}
    name.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){if(d.optString("name")!=s.toString())d.put("place_id",JSONObject.NULL).put("name",s.toString())};override fun afterTextChanged(e:android.text.Editable?){}})
    row.addView(name,LinearLayout.LayoutParams(0,dp(44),1f))
-   val time=TextView(this).apply{
-    val current=d.optString("time").takeUnless{it.isBlank()||it=="null"}
-    text=current?: "◷";textSize=if(current==null)22f else 13f
-    typeface=if(current==null)android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.MONOSPACE
-    gravity=Gravity.CENTER;minWidth=dp(68);setPadding(dp(6),dp(4),dp(6),dp(4))
-    setTextColor(if(current==null)0xff245b8f.toInt() else 0xff153456.toInt())
-    background=GradientDrawable().apply{setColor(if(current==null)0xfff2f7fd.toInt() else 0xffdce9f8.toInt());setStroke(dp(1),if(current==null)0xffb8cde4.toInt() else 0xffc0d7f0.toInt());cornerRadius=dp(11).toFloat()}
-    contentDescription=current?: "Set time"
-    setOnClickListener{val cal=java.util.Calendar.getInstance();val parts=(current?: "").split(":");val h=parts.getOrNull(0)?.toIntOrNull()?:cal.get(11);val m=parts.getOrNull(1)?.toIntOrNull()?:cal.get(12);android.app.TimePickerDialog(this@MainActivity,{_,hh,mm->val value=String.format(java.util.Locale.ROOT,"%02d:%02d",hh,mm);d.put("time",value);renderRows()},h,m,true).apply{setButton(-3,"Clear"){_,_->d.put("time","");renderRows()}}.show()}
+   val currentTime=d.optString("time").takeUnless{it.isBlank()||it=="null"}
+   val time=LinearLayout(this).apply{
+    orientation=0;gravity=Gravity.CENTER
+    setPadding(dp(5),dp(4),dp(5),dp(4))
+    background=GradientDrawable().apply{setColor(if(currentTime==null)0xfff4f8fd.toInt() else 0xffeaf2fb.toInt());setStroke(dp(1),if(currentTime==null)0xffa9c3df.toInt() else 0xffb9cfe6.toInt());cornerRadius=dp(12).toFloat()}
+    if(currentTime==null)addView(ClockGlyphView(this@MainActivity),LinearLayout.LayoutParams(dp(27),dp(27)))
+    else addView(TextView(this@MainActivity).apply{text=currentTime;textSize=13f;typeface=android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL);gravity=Gravity.CENTER;setTextColor(0xff153456.toInt())},LinearLayout.LayoutParams(-1,-1))
+    contentDescription=currentTime?: "Set time"
+    setOnClickListener{val cal=java.util.Calendar.getInstance();val parts=(currentTime?: "").split(":");val h=parts.getOrNull(0)?.toIntOrNull()?:cal.get(11);val m=parts.getOrNull(1)?.toIntOrNull()?:cal.get(12);android.app.TimePickerDialog(this@MainActivity,{_,hh,mm->val value=String.format(java.util.Locale.ROOT,"%02d:%02d",hh,mm);d.put("time",value);renderRows()},h,m,true).apply{setButton(-3,"Clear"){_,_->d.put("time","");renderRows()}}.show()}
    }
-   row.addView(time,LinearLayout.LayoutParams(dp(68),dp(42)).apply{marginStart=dp(5)})
+   row.addView(time,LinearLayout.LayoutParams(dp(74),dp(44)).apply{marginStart=dp(5)})
    row.addView(TextView(this).apply{text="+";textSize=20f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=GradientDrawable().apply{setColor(0xff137a55.toInt());cornerRadius=dp(10).toFloat()};setOnClickListener{drafts.add(idx+1,newStopDraft());renderRows()}},LinearLayout.LayoutParams(dp(34),dp(36)).apply{marginStart=dp(5)})
    row.addView(TextView(this).apply{text="⋮";textSize=20f;gravity=Gravity.CENTER;setTextColor(0xff535e6e.toInt());setOnClickListener{AlertDialog.Builder(this@MainActivity).setItems(arrayOf("Move up","Move down","Remove")){_,which->when(which){0->if(idx>0){val x=drafts.removeAt(idx);drafts.add(idx-1,x)};1->if(idx<drafts.lastIndex){val x=drafts.removeAt(idx);drafts.add(idx+1,x)};2->if(drafts.size>2)drafts.removeAt(idx)else toast("At least two stops required")};renderRows()}.show()}},LinearLayout.LayoutParams(dp(28),dp(38)).apply{marginStart=dp(2)})
    box.addView(row,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,dp(4),0,dp(4))})
