@@ -33,7 +33,7 @@ class MainActivity:ComponentActivity() {
   root.addView(TextView(this).apply{text=title;textSize=24f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(0xff161b22.toInt());setPadding(0,0,0,dp(8))})
   if(subtitle.isNotBlank())root.addView(TextView(this).apply{text=subtitle;textSize=14f;setTextColor(0xff535e6e.toInt());setPadding(0,0,0,dp(12))})
   if(back)root.addView(Button(this).apply{text=tr("← Back","← वापस","← ਵਾਪਸ");isAllCaps=false;setOnClickListener{goBack()}},LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(12)})
-  val scroll=ScrollView(this).apply{isFillViewport=true};body=LinearLayout(this).apply{orientation=1;tag="admin_page_body"};scroll.addView(body,ScrollView.LayoutParams(-1,-2));root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f));setContentView(root)
+  val scroll=ScrollView(this).apply{isFillViewport=true};body=LinearLayout(this).apply{orientation=1;tag="admin_page_body"};scroll.addView(body,android.widget.FrameLayout.LayoutParams(-1,-2));root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f));setContentView(root)
  }
  private fun text(s:String,size:Int=16,bold:Boolean=false)=TextView(this).apply{text=s;textSize=size.toFloat();setTextColor(0xff161b22.toInt());if(bold)typeface=android.graphics.Typeface.DEFAULT_BOLD;setPadding(0,2,0,2)}
  private fun add(v:View){body?.addView(v,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=8})}
