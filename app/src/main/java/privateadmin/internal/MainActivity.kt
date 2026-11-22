@@ -21,13 +21,19 @@ class MainActivity:ComponentActivity() {
  private var body:LinearLayout?=null
  private fun tr(a:String,b:String,c:String)=uiText(a,b,c,lang)
  private fun dp(value:Int):Int=(value*resources.displayMetrics.density+0.5f).toInt()
- override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);dao=LocalDb.get(this).dao();sync=SyncEngine(api,dao);lang=runCatching{UiLanguage.valueOf(getPreferences(0).getString("lang","EN")!!)}.getOrDefault(UiLanguage.EN)
+ override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);onBackPressedDispatcher.addCallback(this,object:androidx.activity.OnBackPressedCallback(true){override fun handleOnBackPressed(){goBack()}});dao=LocalDb.get(this).dao();sync=SyncEngine(api,dao);lang=runCatching{UiLanguage.valueOf(getPreferences(0).getString("lang","EN")!!)}.getOrDefault(UiLanguage.EN)
   val p=getPreferences(0);if(p.contains("access")){api.session=Session(p.getString("access","")!!,p.getString("refresh","")!!,p.getLong("expiry",0));home()}else login()
  }
- private fun screen(title:String,back:Boolean=true){val root=LinearLayout(this).apply{orientation=1;setPadding(20,16,20,16);setBackgroundColor(0xfff5f7fb.toInt())};val header=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL}
-  if(back)header.addView(button("‹",false){home()},LinearLayout.LayoutParams(52,52))
+ private val pageStack=java.util.ArrayDeque<View>()
+ private fun findBody(v:View):LinearLayout?{if(v is LinearLayout && v.tag=="admin_page_body")return v;if(v is android.view.ViewGroup)for(i in 0 until v.childCount)findBody(v.getChildAt(i))?.let{return it};return null}
+ private fun goBack(){if(pageStack.isNotEmpty()){setContentView(pageStack.removeLast());body=(findViewById<View>(android.R.id.content) as? android.view.ViewGroup)?.getChildAt(0)?.let{findBody(it)};return};AlertDialog.Builder(this).setMessage("Do you want to exit Bustime Admin?").setNegativeButton("Cancel",null).setPositiveButton("Exit"){_,_->finish()}.show()}
+ private fun screen(title:String,back:Boolean=true){
+  val previous=(findViewById<View>(android.R.id.content) as? android.view.ViewGroup)?.getChildAt(0);if(previous!=null&&back)pageStack.addLast(previous)
+  val root=LinearLayout(this).apply{orientation=1;setPadding(20,16,20,16);setBackgroundColor(0xfff5f7fb.toInt())}
+  val header=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL}
+  if(back)header.addView(button("‹  Back",false){goBack()},LinearLayout.LayoutParams(-2,52))
   header.addView(text(title,22,true),LinearLayout.LayoutParams(0,-2,1f));root.addView(header)
-  val scroll=ScrollView(this);body=LinearLayout(this).apply{orientation=1};scroll.addView(body);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f));setContentView(root)
+  val scroll=ScrollView(this);body=LinearLayout(this).apply{orientation=1;tag="admin_page_body"};scroll.addView(body);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f));setContentView(root)
  }
  private fun text(s:String,size:Int=16,bold:Boolean=false)=TextView(this).apply{text=s;textSize=size.toFloat();setTextColor(0xff17243a.toInt());if(bold)typeface=android.graphics.Typeface.DEFAULT_BOLD;setPadding(4,10,4,10)}
  private fun add(v:View){body?.addView(v,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=8})}
@@ -42,8 +48,8 @@ class MainActivity:ComponentActivity() {
  private fun input(h:String,v:String="")=EditText(this).apply{hint=h;setText(v);textSize=16f}
  private fun task(fn:suspend()->Unit){lifecycleScope.launch{try{fn()}catch(e:Exception){toast(e.message?: "Request failed")}}}
  private fun toast(s:String){Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
- private fun login(){screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
- private fun home(){screen("Bustime Admin",false)
+ private fun login(){pageStack.clear();screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
+ private fun home(){pageStack.clear();screen("Bustime Admin",false)
   val brand=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),dp(10),dp(14),dp(10));background=GradientDrawable().apply{setColor(0xff102b57.toInt());cornerRadius=dp(18).toFloat()}}
   brand.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(76),dp(76)))
   val brandText=LinearLayout(this).apply{orientation=1;setPadding(dp(10),0,0,0)}
@@ -54,7 +60,7 @@ class MainActivity:ComponentActivity() {
   val language=Spinner(this);language.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("English","हिन्दी","ਪੰਜਾਬੀ"));language.setSelection(lang.ordinal);language.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener{override fun onNothingSelected(p:android.widget.AdapterView<*>?){};override fun onItemSelected(p:android.widget.AdapterView<*>?,v:View?,pos:Int,id:Long){lang=UiLanguage.values()[pos];getPreferences(0).edit().putString("lang",lang.name).apply()}};add(language)
   add(button(tr("Sync now","अभी सिंक करें","ਹੁਣੇ ਸਿੰਕ ਕਰੋ")){task{toast("Synced · revision "+sync.sync())}})
   add(button(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ")){routeList()});add(button(tr("Bus Stop List","बस स्टॉप सूची","ਬੱਸ ਸਟਾਪ ਸੂਚੀ")){placeList()})
-  add(button(tr("Recycle Bin","रीसायकल बिन","ਰੀਸਾਈਕਲ ਬਿਨ")){recycle()});add(button(tr("Review Center","रिव्यू सेंटर","ਰੀਵਿਊ ਸੈਂਟਰ")){reviews()})
+  add(button(tr("Recycle Bin","रीसायकल बिन","ਰੀਸਾਈਕਲ ਬਿਨ")){recycle()});add(button(tr("Review Center","रिव्यू सेंटर","ਰੀਵਿਊ ਸੈਂਟਰ")){reviews()});add(button(tr("History","हिस्ट्री","ਇਤਿਹਾਸ")){history(true)})
   add(button(tr("Add Route","रूट जोड़ें","ਰੂਟ ਜੋੜੋ")){editRoute(null)});add(button(tr("Correction Route","रूट सुधारें","ਰੂਟ ਸੋਧੋ")){correctionRouteList()});add(button(tr("Add Bus Stop","बस स्टॉप जोड़ें","ਬੱਸ ਸਟਾਪ ਜੋੜੋ")){editPlace(null)})
   add(button("Sign out",false){api.session=null;getPreferences(0).edit().clear().apply();login()})
   task{SnapshotSeeder.seed(assets,dao);sync.sync()}
@@ -143,6 +149,13 @@ class MainActivity:ComponentActivity() {
   payload.put("id",id).put("kind",kind).put("name",names)
   val res=publishChange("place",id,"upsert",payload);toast("Published successfully · revision "+res.optLong("revision"));sync.sync();placeList()
  }}
+ private var historyItems=mutableListOf<JSONObject>()
+ private var historyHasMore=false
+ private var historyState:JSONObject?=null
+ private fun history(reset:Boolean){if(reset){historyItems.clear();historyHasMore=false};screen("History");add(button("↻ Refresh"){history(true)});task{val before=if(!reset)historyItems.lastOrNull()?.optLong("revision") else null;val req=JSONObject().put("limit",200);if(before!=null&&before>0)req.put("before_revision",before);val result=api.history(req);val rows=result.optJSONArray("items")?:JSONArray();for(i in 0 until rows.length())historyItems.add(rows.getJSONObject(i));historyHasMore=result.optBoolean("has_more");historyState=result.optJSONObject("state");renderHistoryRows()}}
+ private fun historyChanged(row:JSONObject):String{if(row.optString("operation")=="delete")return "Moved to Recycle Bin";val before=row.optJSONObject("before")?:return "New or first version in this list";val after=row.optJSONObject("payload")?:JSONObject();val keys=(before.keys().asSequence().toList()+after.keys().asSequence().toList()).distinct();val changed=keys.filter{before.opt(it).toString()!=after.opt(it).toString()};return if(changed.isEmpty())"Re-published, no field changed" else "Changed: "+changed.joinToString(", ")}
+ private fun historyLabel(row:JSONObject):String{val p=row.optJSONObject("payload")?:row.optJSONObject("before")?:JSONObject();if(row.optString("entity_type")=="route")return p.optString("from","?")+" → "+p.optString("to","?")+p.optString("time").takeIf{it.isNotBlank()}?.let{" · "+it}.orEmpty();val n=p.optJSONObject("name")?:JSONObject();return n.optString("en").ifBlank{n.optString("hi").ifBlank{n.optString("pa").ifBlank{row.optString("entity_id")}}}}
+ private fun renderHistoryRows(){val state=historyState;add(text(if(state==null)"Published route and bus-stop changes, newest first." else "Current revision "+state.optLong("revision")+" · Last published "+state.optString("published_at"),13));if(historyItems.isEmpty())add(text("No history yet.",14));var lastRevision=-1L;historyItems.forEach{row->val revision=row.optLong("revision");val date=runCatching{java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a",java.util.Locale("en","IN")).apply{timeZone=java.util.TimeZone.getTimeZone("Asia/Kolkata")}.format(java.util.Date(java.time.Instant.parse(row.optString("created_at")).toEpochMilli()))}.getOrDefault(row.optString("created_at"));val card=LinearLayout(this).apply{orientation=1;setPadding(dp(14),dp(12),dp(14),dp(12));background=GradientDrawable().apply{setColor(Color.WHITE);cornerRadius=dp(14).toFloat();setStroke(dp(1),0xffe1e7ef.toInt())}};card.addView(text(if(revision!=lastRevision)"Revision "+revision+" · "+date else date,12,true));lastRevision=revision;card.addView(text(row.optString("entity_type").uppercase()+" · "+historyLabel(row),15,true));card.addView(text("ID: "+row.optString("entity_id")+" · "+row.optString("operation"),11));card.addView(text(historyChanged(row),13));add(card)};if(historyHasMore)add(button("Load older history"){history(false)})}
  private fun recycle(){
   screen("Recycle Bin");add(button("Refresh"){recycle()})
   task{val a=api.publish(JSONObject().put("action","recycle-list")).optJSONArray("items")?:JSONArray()
