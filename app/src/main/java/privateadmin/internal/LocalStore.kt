@@ -5,7 +5,7 @@ import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "places")
-data class PlaceRow(@PrimaryKey val id:String, val kind:String, val names:String, val city:String?=null, val district:String?=null)
+data class PlaceRow(@PrimaryKey val id:String, val kind:String, val names:String, val city:String?=null, val district:String?=null, val payload:String="{}")
 @Entity(tableName = "routes")
 data class RouteRow(@PrimaryKey val id:String, val payload:String, val fromId:String, val toId:String, val time:String?)
 @Entity(tableName = "sync_meta")
