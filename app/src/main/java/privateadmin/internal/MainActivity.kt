@@ -26,13 +26,13 @@ class MainActivity:ComponentActivity() {
  }
  private val pageStack=java.util.ArrayDeque<View>()
  private fun findBody(v:View):LinearLayout?{if(v is LinearLayout && v.tag=="admin_page_body")return v;if(v is android.view.ViewGroup)for(i in 0 until v.childCount)findBody(v.getChildAt(i))?.let{return it};return null}
- private fun goBack(){if(pageStack.isNotEmpty()){setContentView(pageStack.removeLast());body=(findViewById<View>(android.R.id.content) as? android.view.ViewGroup)?.getChildAt(0)?.let{findBody(it)};return};AlertDialog.Builder(this).setMessage("Do you want to exit Bustime Admin?").setNegativeButton("Cancel",null).setPositiveButton("Exit"){_,_->finish()}.show()}
+ private fun goBack(){if(pageStack.isNotEmpty()){setContentView(pageStack.removeLast());body=(findViewById<View>(android.R.id.content) as? android.view.ViewGroup)?.getChildAt(0)?.let{findBody(it)};return};AlertDialog.Builder(this).setMessage("Do you want to exit Bustime Operations?").setNegativeButton("Cancel",null).setPositiveButton("Exit"){_,_->finish()}.show()}
  private fun screen(title:String,back:Boolean=true,subtitle:String=""){
   val previous=(findViewById<View>(android.R.id.content) as? android.view.ViewGroup)?.getChildAt(0);if(previous!=null&&back)pageStack.addLast(previous)
   val root=LinearLayout(this).apply{orientation=1;setPadding(dp(24),dp(16),dp(24),dp(24));setBackgroundColor(Color.WHITE)}
   root.addView(TextView(this).apply{text=title;textSize=24f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(0xff161b22.toInt());setPadding(0,0,0,dp(8))})
   if(subtitle.isNotBlank())root.addView(TextView(this).apply{text=subtitle;textSize=14f;setTextColor(0xff535e6e.toInt());setPadding(0,0,0,dp(12))})
-  if(back)root.addView(Button(this).apply{text=tr("← Back","← वापस","← ਵਾਪਸ");isAllCaps=false;setOnClickListener{goBack()}},LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(12)})
+  if(back)root.addView(toolbarAction(tr("‹  Back","‹  वापस","‹  ਵਾਪਸ")){goBack()},LinearLayout.LayoutParams(dp(112),dp(42)).apply{bottomMargin=dp(12)})
   val scroll=ScrollView(this).apply{isFillViewport=true};body=LinearLayout(this).apply{orientation=1;tag="admin_page_body"};scroll.addView(body,android.widget.FrameLayout.LayoutParams(-1,-2));root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f));setContentView(root)
  }
  private fun text(s:String,size:Int=16,bold:Boolean=false)=TextView(this).apply{text=s;textSize=size.toFloat();setTextColor(0xff161b22.toInt());if(bold)typeface=android.graphics.Typeface.DEFAULT_BOLD;setPadding(0,2,0,2)}
@@ -44,23 +44,45 @@ class MainActivity:ComponentActivity() {
   return card
  }
  private fun countLabel(value:Int,unit:String)=text("$value $unit",12,true).apply{setTextColor(0xff64748b.toInt())}
- private fun button(s:String,primary:Boolean=true,fn:()->Unit)=Button(this).apply{text=s;isAllCaps=false;setOnClickListener{fn()};if(!primary)setTextColor(0xffb42318.toInt())}
+ private fun button(s:String,primary:Boolean=true,fn:()->Unit)=Button(this).apply{
+  text=s;isAllCaps=false;textSize=14f;minHeight=dp(48);setPadding(dp(16),dp(8),dp(16),dp(8))
+  typeface=android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL)
+  setTextColor(if(primary)Color.WHITE else 0xffb42318.toInt())
+  background=GradientDrawable().apply{setColor(if(primary)0xff245b8f.toInt() else 0xfffff1ee.toInt());cornerRadius=dp(13).toFloat();if(!primary)setStroke(dp(1),0xfff2c7c1.toInt())}
+  elevation=dp(2).toFloat();stateListAnimator=null;setOnClickListener{fn()}
+ }
+ private fun homeTile(label:String,color:Int,fn:()->Unit)=Button(this).apply{
+  text=label;isAllCaps=false;textSize=14f;minHeight=dp(58);gravity=Gravity.CENTER
+  typeface=android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL)
+  setTextColor(Color.WHITE);setPadding(dp(10),dp(10),dp(10),dp(10))
+  background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(color,Color.rgb(Color.red(color)*8/10,Color.green(color)*8/10,Color.blue(color)*8/10))).apply{cornerRadius=dp(15).toFloat()}
+  elevation=dp(2).toFloat();stateListAnimator=null;setOnClickListener{fn()}
+ }
+ private fun toolbarAction(label:String,fn:()->Unit)=Button(this).apply{
+  text=label;isAllCaps=false;textSize=13f;minHeight=dp(42);setTextColor(0xff245b8f.toInt())
+  background=GradientDrawable().apply{setColor(0xffeaf2fb.toInt());cornerRadius=dp(12).toFloat();setStroke(dp(1),0xffc8d9ec.toInt())}
+  setOnClickListener{fn()}
+ }
  private fun input(h:String,v:String="")=EditText(this).apply{hint=h;setText(v);textSize=16f}
  private fun task(fn:suspend()->Unit){lifecycleScope.launch{try{fn()}catch(e:Exception){toast(e.message?: "Request failed")}}}
  private fun toast(s:String){Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
  private fun login(){pageStack.clear();screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
- private fun home(){pageStack.clear();screen("MDM Admin",false)
-  add(text(tr("Published changes sync to the app.","प्रकाशित बदलाव ऐप में सिंक होते हैं।","ਪ੍ਰਕਾਸ਼ਿਤ ਤਬਦੀਲੀਆਂ ਐਪ ਵਿੱਚ ਸਿੰਕ ਹੁੰਦੀਆਂ ਹਨ।"),14))
+ private fun home(){pageStack.clear();screen("Bustime Operations",false)
   val language=Spinner(this);language.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("English","हिन्दी","ਪੰਜਾਬੀ"));language.setSelection(lang.ordinal);language.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener{override fun onNothingSelected(p:android.widget.AdapterView<*>?){};override fun onItemSelected(p:android.widget.AdapterView<*>?,v:View?,pos:Int,id:Long){lang=UiLanguage.values()[pos];getPreferences(0).edit().putString("lang",lang.name).apply()}};add(language)
-  add(button(tr("Sync now","अभी सिंक करें","ਹੁਣੇ ਸਿੰਕ ਕਰੋ")){task{toast("Synced · revision "+sync.sync())}})
-  add(button(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ")){routeList()})
-  add(button(tr("Bus Stop List","बस स्टॉप सूची","ਬੱਸ ਸਟਾਪ ਸੂਚੀ")){placeList()})
-  add(button(tr("Recycle Bin","रिसायकल बिन","ਰੀਸਾਈਕਲ ਬਿਨ")){recycle()})
-  add(button(tr("Review Center","रिव्यू सेंटर","ਰੀਵਿਊ ਸੈਂਟਰ")){reviews()})
-  add(button(tr("History","हिस्ट्री","ਇਤਿਹਾਸ")){history(true)})
-  add(button(tr("Add Route","रूट जोड़ें","ਰੂਟ ਜੋੜੋ")){editRoute(null)})
-  add(button(tr("Correction Route","रूट सुधारें","ਰੂਟ ਸੋਧੋ")){correctionRouteList()})
-  add(button(tr("Add Bus Stop","बस स्टॉप जोड़ें","ਬੱਸ ਸਟਾਪ ਜੋੜੋ")){editPlace(null)})
+  val menu=GridLayout(this).apply{columnCount=2;useDefaultMargins=false}
+  val tiles=listOf(
+   Triple(tr("Sync now","अभी सिंक करें","ਹੁਣੇ ਸਿੰਕ ਕਰੋ"),0xff2463a6.toInt(),{task{toast("Synced · revision "+sync.sync())}}),
+   Triple(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ"),0xff147d75.toInt(),{routeList()}),
+   Triple(tr("Bus Stop List","बस स्टॉप सूची","ਬੱਸ ਸਟਾਪ ਸੂਚੀ"),0xff3973b9.toInt(),{placeList()}),
+   Triple(tr("Recycle Bin","रिसायकल बिन","ਰੀਸਾਈਕਲ ਬਿਨ"),0xff68758b.toInt(),{recycle()}),
+   Triple(tr("Review Center","रिव्यू सेंटर","ਰੀਵਿਊ ਸੈਂਟਰ"),0xff8057a6.toInt(),{reviews()}),
+   Triple(tr("History","हिस्ट्री","ਇਤਿਹਾਸ"),0xffb36a35.toInt(),{history(true)}),
+   Triple(tr("Add Route","रूट जोड़ें","ਰੂਟ ਜੋੜੋ"),0xff16845f.toInt(),{editRoute(null)}),
+   Triple(tr("Correction Route","रूट सुधारें","ਰੂਟ ਸੋਧੋ"),0xff277b9b.toInt(),{correctionRouteList()}),
+   Triple(tr("Add Bus Stop","बस स्टॉप जोड़ें","ਬੱਸ ਸਟਾਪ ਜੋੜੋ"),0xff4b7c4a.toInt(),{editPlace(null)})
+  )
+  tiles.forEachIndexed{index,item->val tile=homeTile(item.first,item.second,item.third);menu.addView(tile,GridLayout.LayoutParams().apply{width=0;height=dp(64);columnSpec=GridLayout.spec(index%2,1f);rowSpec=GridLayout.spec(index/2);setMargins(dp(4),dp(5),dp(4),dp(5))})}
+  add(menu)
   add(button(tr("Sign out","साइन आउट","ਸਾਈਨ ਆਉਟ"),false){api.session=null;getPreferences(0).edit().clear().apply();login()})
   task{SnapshotSeeder.seed(assets,dao);sync.sync()}
  }
@@ -128,15 +150,24 @@ class MainActivity:ComponentActivity() {
    name.setOnItemClickListener{_,_,pos,_->val p=choices[pos];d.put("place_id",p.id).put("name",placeName(p))}
    name.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){if(d.optString("name")!=s.toString())d.put("place_id",JSONObject.NULL).put("name",s.toString())};override fun afterTextChanged(e:android.text.Editable?){}})
    row.addView(name,LinearLayout.LayoutParams(0,dp(44),1f))
-   val time=TextView(this).apply{text=d.optString("time").ifBlank{"◷"};textSize=12f;typeface=android.graphics.Typeface.MONOSPACE;gravity=Gravity.CENTER;setPadding(dp(5),dp(4),dp(5),dp(4));setTextColor(if(d.optString("time").isBlank())0xff7a8493.toInt() else 0xff153456.toInt());background=GradientDrawable().apply{setColor(if(d.optString("time").isBlank())Color.WHITE else 0xffdce9f8.toInt());setStroke(dp(1),if(d.optString("time").isBlank())0xffe6dfd4.toInt() else 0xffc0d7f0.toInt());cornerRadius=dp(10).toFloat()};setOnClickListener{val cal=java.util.Calendar.getInstance();val parts=d.optString("time").split(":");val h=parts.getOrNull(0)?.toIntOrNull()?:cal.get(11);val m=parts.getOrNull(1)?.toIntOrNull()?:cal.get(12);android.app.TimePickerDialog(this@MainActivity,{_,hh,mm->val value=String.format(java.util.Locale.ROOT,"%02d:%02d",hh,mm);d.put("time",value);renderRows()},h,m,true).apply{setButton(-3,"Clear"){_,_->d.put("time",JSONObject.NULL);renderRows()}}.show()}}
-   row.addView(time,LinearLayout.LayoutParams(dp(58),dp(36)).apply{marginStart=dp(4)})
+   val time=TextView(this).apply{
+    val current=d.optString("time").takeUnless{it.isBlank()||it=="null"}
+    text=current?: "◷";textSize=if(current==null)22f else 13f
+    typeface=if(current==null)android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.MONOSPACE
+    gravity=Gravity.CENTER;minWidth=dp(68);setPadding(dp(6),dp(4),dp(6),dp(4))
+    setTextColor(if(current==null)0xff245b8f.toInt() else 0xff153456.toInt())
+    background=GradientDrawable().apply{setColor(if(current==null)0xfff2f7fd.toInt() else 0xffdce9f8.toInt());setStroke(dp(1),if(current==null)0xffb8cde4.toInt() else 0xffc0d7f0.toInt());cornerRadius=dp(11).toFloat()}
+    contentDescription=current?: "Set time"
+    setOnClickListener{val cal=java.util.Calendar.getInstance();val parts=(current?: "").split(":");val h=parts.getOrNull(0)?.toIntOrNull()?:cal.get(11);val m=parts.getOrNull(1)?.toIntOrNull()?:cal.get(12);android.app.TimePickerDialog(this@MainActivity,{_,hh,mm->val value=String.format(java.util.Locale.ROOT,"%02d:%02d",hh,mm);d.put("time",value);renderRows()},h,m,true).apply{setButton(-3,"Clear"){_,_->d.put("time","");renderRows()}}.show()}
+   }
+   row.addView(time,LinearLayout.LayoutParams(dp(68),dp(42)).apply{marginStart=dp(5)})
    row.addView(TextView(this).apply{text="+";textSize=20f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=GradientDrawable().apply{setColor(0xff137a55.toInt());cornerRadius=dp(10).toFloat()};setOnClickListener{drafts.add(idx+1,newStopDraft());renderRows()}},LinearLayout.LayoutParams(dp(34),dp(36)).apply{marginStart=dp(5)})
    row.addView(TextView(this).apply{text="⋮";textSize=20f;gravity=Gravity.CENTER;setTextColor(0xff535e6e.toInt());setOnClickListener{AlertDialog.Builder(this@MainActivity).setItems(arrayOf("Move up","Move down","Remove")){_,which->when(which){0->if(idx>0){val x=drafts.removeAt(idx);drafts.add(idx-1,x)};1->if(idx<drafts.lastIndex){val x=drafts.removeAt(idx);drafts.add(idx+1,x)};2->if(drafts.size>2)drafts.removeAt(idx)else toast("At least two stops required")};renderRows()}.show()}},LinearLayout.LayoutParams(dp(28),dp(38)).apply{marginStart=dp(2)})
    box.addView(row,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,dp(4),0,dp(4))})
   }
   val addEnd=button("＋ Add Stop at End"){drafts.add(newStopDraft());renderRows()};addEnd.background=actionStyle;box.addView(addEnd,LinearLayout.LayoutParams(-1,dp(44)).apply{topMargin=dp(10)})
  }
- renderRows();add(text("Service / Bus Name",13,true));add(service);add(button("Preview Route"){if(drafts.size<2||drafts.any{it.optString("name").isBlank()}||drafts.none{it.optString("time").matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))}){toast("Enter all stops and at least one valid time");return@button};screen("Route Preview",true,"Preview the complete route before publishing.")
+ renderRows();add(text("Service / Bus Name",13,true));add(service);add(button("Preview Route  →"){if(drafts.size<2||drafts.any{it.optString("name").isBlank()}||drafts.none{it.optString("time").matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))}){toast("Enter all stops and at least one valid time");return@button};screen("Route Preview",true,"Preview the complete route before publishing.")
  val previewCard=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(14),dp(16),dp(14));background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(0xff0c2038.toInt(),0xff153456.toInt(),0xff255589.toInt())).apply{cornerRadius=dp(16).toFloat()}}
  previewCard.addView(TextView(this).apply{text=drafts.first().optString("name")+" → "+drafts.last().optString("name");textSize=19f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(Color.WHITE)})
  if(service.text.isNotBlank())previewCard.addView(TextView(this).apply{text=service.text.toString();textSize=14f;setTextColor(0xffdce9f8.toInt())})
@@ -148,8 +179,8 @@ class MainActivity:ComponentActivity() {
   line.addView(text(d.optString("time").ifBlank{"—"},12,true).apply{setTextColor(color)})
   add(line)
  }
- add(button("← Back to Edit"){editRoute(old,copy,reverse,prefill,reviewRequest)})
- add(button("Publish Route"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})});add(button("Publish Route"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})
+ add(toolbarAction("‹  Back to Edit"){editRoute(old,copy,reverse,prefill,reviewRequest)})
+ add(button("Publish Route  ✓"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})});add(button("Publish Route  ✓"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})
  }}
  private fun newStopDraft()=JSONObject().put("place_id",JSONObject.NULL).put("name","").put("time","")
  private fun publishDraftRoute(old:RouteRow?,copy:Boolean,reverse:Boolean,drafts:List<JSONObject>,service:String,reviewRequest:Pair<String,JSONObject>?=null){task{val ids=drafts.map{it.optString("place_id")};val re=Regex("^([01]\\d|2[0-3]):[0-5]\\d$");if(drafts.any{it.optString("name").isBlank()}||ids.any{it.isBlank()||it=="null"}||ids.distinct().size<2)throw IllegalStateException("Select at least two valid stops.");if(drafts.none{re.matches(it.optString("time"))})throw IllegalStateException("At least one valid time is required.");val id=old?.id?.takeIf{!copy&&!reverse}?:("r_"+System.currentTimeMillis());val payload=JSONObject(old?.payload?:"{}").put("id",id).put("from",ids.first()).put("to",ids.last()).put("time",drafts.first().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL).put("service",service).put("stops",JSONArray().apply{drafts.drop(1).dropLast(1).forEach{put(JSONObject().put("place",it.optString("place_id")).put("time",it.optString("time").takeIf{v->re.matches(v)}?:JSONObject.NULL))}});val res=api.publish(JSONObject().put("action","publish").put("changes",JSONArray().put(JSONObject().put("entity_type","route").put("entity_id",id).put("operation","upsert").put("payload",payload))));if(reviewRequest!=null){api.publish(JSONObject().put("action","review-status").put("table",reviewRequest.first).put("id",reviewRequest.second.optString("id")).put("status","approved"))};toast(if(reviewRequest!=null)"Route published and request approved · revision "+res.optLong("revision") else "Published · revision "+res.optLong("revision"));sync.sync();if(reviewRequest!=null)reviews()else home()}}
@@ -212,12 +243,12 @@ class MainActivity:ComponentActivity() {
  private var historyItems=mutableListOf<JSONObject>()
  private var historyHasMore=false
  private var historyState:JSONObject?=null
- private fun history(reset:Boolean){if(reset){historyItems.clear();historyHasMore=false};screen("History");add(button("↻ Refresh"){history(true)});task{val before=if(!reset)historyItems.lastOrNull()?.optLong("revision") else null;val req=JSONObject().put("limit",200);if(before!=null&&before>0)req.put("before_revision",before);val result=api.history(req);val rows=result.optJSONArray("items")?:JSONArray();for(i in 0 until rows.length())historyItems.add(rows.getJSONObject(i));historyHasMore=result.optBoolean("has_more");historyState=result.optJSONObject("state");renderHistoryRows()}}
+ private fun history(reset:Boolean){if(reset){historyItems.clear();historyHasMore=false};screen("History");add(toolbarAction("↻  Refresh"){history(true)});task{val before=if(!reset)historyItems.lastOrNull()?.optLong("revision") else null;val req=JSONObject().put("limit",200);if(before!=null&&before>0)req.put("before_revision",before);val result=api.history(req);val rows=result.optJSONArray("items")?:JSONArray();for(i in 0 until rows.length())historyItems.add(rows.getJSONObject(i));historyHasMore=result.optBoolean("has_more");historyState=result.optJSONObject("state");renderHistoryRows()}}
  private fun historyChanged(row:JSONObject):String{if(row.optString("operation")=="delete")return "Moved to Recycle Bin";val before=row.optJSONObject("before")?:return "New or first version in this list";val after=row.optJSONObject("payload")?:JSONObject();val keys=(before.keys().asSequence().toList()+after.keys().asSequence().toList()).distinct();val changed=keys.filter{before.opt(it).toString()!=after.opt(it).toString()};return if(changed.isEmpty())"Re-published, no field changed" else "Changed: "+changed.joinToString(", ")}
  private fun historyLabel(row:JSONObject):String{val p=row.optJSONObject("payload")?:row.optJSONObject("before")?:JSONObject();if(row.optString("entity_type")=="route")return p.optString("from","?")+" → "+p.optString("to","?")+p.optString("time").takeIf{it.isNotBlank()}?.let{" · "+it}.orEmpty();val n=p.optJSONObject("name")?:JSONObject();return n.optString("en").ifBlank{n.optString("hi").ifBlank{n.optString("pa").ifBlank{row.optString("entity_id")}}}}
  private fun renderHistoryRows(){val state=historyState;add(text(if(state==null)"Published route and bus-stop changes, newest first." else "Current revision "+state.optLong("revision")+" · Last published "+state.optString("published_at"),13));if(historyItems.isEmpty())add(text("No history yet.",14));var lastRevision=-1L;historyItems.forEach{row->val revision=row.optLong("revision");val date=runCatching{java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a",java.util.Locale("en","IN")).apply{timeZone=java.util.TimeZone.getTimeZone("Asia/Kolkata")}.format(java.util.Date(java.time.Instant.parse(row.optString("created_at")).toEpochMilli()))}.getOrDefault(row.optString("created_at"));val card=LinearLayout(this).apply{orientation=1;setPadding(dp(14),dp(12),dp(14),dp(12));background=GradientDrawable().apply{setColor(Color.WHITE);cornerRadius=dp(14).toFloat();setStroke(dp(1),0xffe1e7ef.toInt())}};card.addView(text(if(revision!=lastRevision)"Revision "+revision+" · "+date else date,12,true));lastRevision=revision;card.addView(text(row.optString("entity_type").uppercase()+" · "+historyLabel(row),15,true));card.addView(text("ID: "+row.optString("entity_id")+" · "+row.optString("operation"),11));card.addView(text(historyChanged(row),13));add(card)};if(historyHasMore)add(button("Load older history"){history(false)})}
  private fun recycle(){
-  screen("Recycle Bin");add(button("Refresh"){recycle()})
+  screen("Recycle Bin");add(toolbarAction("↻  Refresh"){recycle()})
   task{val a=api.publish(JSONObject().put("action","recycle-list")).optJSONArray("items")?:JSONArray()
    if(a.length()==0)add(text("Recycle Bin is empty.",14))
    for(i in 0 until a.length()){val x=a.getJSONObject(i);val id=x.optLong("id");val type=x.optString("entity_type");val entity=x.optString("entity_id");val deleted=x.optString("deleted_at").replace('T',' ').take(16)
