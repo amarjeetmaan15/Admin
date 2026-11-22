@@ -13,7 +13,7 @@ object SnapshotSeeder {
   val routes=root.optJSONArray("routes")?:org.json.JSONArray()
   for(i in 0 until places.length()){
    val p=places.getJSONObject(i)
-   dao.putPlace(PlaceRow(p.getString("id"),p.optString("kind","place"),p.optJSONObject("name")?.toString()?:"{}"))
+   dao.putPlace(PlaceRow(p.getString("id"),p.optString("kind","place"),p.optJSONObject("name")?.toString()?:"{}",p.optString("city").ifBlank{null},p.optString("district").ifBlank{null},p.toString()))
   }
   for(i in 0 until routes.length()){
    val r=routes.getJSONObject(i)
