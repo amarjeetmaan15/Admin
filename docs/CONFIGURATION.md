@@ -3,7 +3,7 @@
 1. Choose the Android launcher display name and provide it separately; the app label is intentionally blank for now.
 2. Choose the Android application ID/package name. Do not use the example package from the specification unless you choose it. Set the repository variable `APP_APPLICATION_ID` or pass the same value to the manual workflow input `application_id`.
 3. Add the owner's Supabase Auth email/password account if it is not already active. Its user ID must be the owner UID configured in `Config.kt`.
-4. Configure a dedicated private signing keystore in GitHub Actions secrets before distributing upgradeable builds. Do not commit the keystore or its passwords. The current workflow produces a debug-signed APK for initial testing.
+4. Configure these GitHub Actions secrets for a stable owner signature: `TESTING_KEYSTORE_BASE64` (base64-encoded JKS), `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD`. Do not commit the keystore or passwords. When these secrets exist, the workflow decodes the keystore into the runner temporary directory and signs the debug APK with it; without them, Android uses its ephemeral default debug key, suitable only for first-time testing.
 5. Run Actions → Build private admin APK → Run workflow with the chosen application ID. Download the `Private-Admin-APK` artifact or the private GitHub Release.
 
 ## Backend security changes already made
