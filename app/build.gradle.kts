@@ -5,9 +5,10 @@ plugins {
 }
 val appId = providers.gradleProperty("APP_APPLICATION_ID")
     .orElse(providers.environmentVariable("APP_APPLICATION_ID"))
-    .orNull
-if (appId.isNullOrBlank() || !appId.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+"))) {
-    throw GradleException("Set APP_APPLICATION_ID to the package name chosen by the owner. It is intentionally not pre-filled.")
+    .orElse("com.admin")
+    .get()
+if (!appId.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+"))) {
+    throw GradleException("APP_APPLICATION_ID must be a valid Android package name, for example com.admin.")
 }
 android {
     namespace = "privateadmin.internal"
