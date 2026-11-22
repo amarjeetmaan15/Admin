@@ -70,13 +70,37 @@ class MainActivity:ComponentActivity() {
  private fun routeDetail(r:RouteRow){
   task{
    val j=JSONObject(r.payload);val places=dao.allPlaces()
-   screen("Route details");add(text(placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"))+" → "+placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}")),20,true))
-   add(text("Service: "+j.optString("service").ifBlank{"—"}+"   ·   First time: "+r.time.orEmpty(),12))
+   val from=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"))
+   val to=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"))
    val stops=mutableListOf<Pair<String,String>>();stops.add(r.fromId to j.optString("time"))
-   val a=j.optJSONArray("stops")?:JSONArray();for(i in 0 until a.length()){val x=a.optJSONObject(i);if(x!=null)stops.add(x.optString("place") to x.optString("time"))}
+   val arr=j.optJSONArray("stops")?:JSONArray();for(i in 0 until arr.length()){val x=arr.optJSONObject(i);if(x!=null)stops.add(x.optString("place") to x.optString("time"))}
    stops.add(r.toId to "")
-   stops.forEachIndexed{idx,p->val name=places.firstOrNull{it.id==p.first}?.let{placeName(it)}?:p.first;add(text((idx+1).toString()+". "+name+"    "+p.second.ifBlank{"—"},14))}
-   add(button("Correct this route"){editRoute(r)});add(button("Copy Route"){editRoute(r,true)});add(button("Return Route"){editRoute(r,false,true)})
+   screen("$from → $to",true)
+   val hero=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(14),dp(16),dp(14));background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(0xff0c2038.toInt(),0xff153456.toInt(),0xff255589.toInt())).apply{cornerRadius=dp(16).toFloat()}}
+   hero.addView(TextView(this).apply{text="$from → $to";textSize=20f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(Color.WHITE);setPadding(0,0,0,dp(6))})
+   val service=j.optString("service").ifBlank{j.optString("routeName")}
+   if(service.isNotBlank())hero.addView(TextView(this).apply{text=service;textSize=14f;setTextColor(0xffdce9f8.toInt())})
+   if(r.time!=null)hero.addView(TextView(this).apply{text="Departs at "+r.time;textSize=14f;setTextColor(0xffffdf9b.toInt());setPadding(0,dp(5),0,0)})
+   add(hero)
+   val timeline=LinearLayout(this).apply{orientation=1;setPadding(dp(12),dp(12),dp(12),dp(12));background=GradientDrawable().apply{setColor(Color.WHITE);cornerRadius=dp(14).toFloat();setStroke(dp(1),0xffe6dfd4.toInt())}}
+   stops.forEachIndexed{idx,p->
+    val place=places.firstOrNull{it.id==p.first}
+    val name=place?.let{placeName(it)}?:p.first
+    val row=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(7),0,dp(7))}
+    val nodeColor=when(idx){0->0xff137a55.toInt();stops.lastIndex->0xffe05a1e.toInt();else->0xff255589.toInt()}
+    val node=TextView(this).apply{text=(idx+1).toString();gravity=Gravity.CENTER;textSize=12f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(Color.WHITE);background=GradientDrawable().apply{shape=GradientDrawable.OVAL;setColor(nodeColor)}}
+    row.addView(node,LinearLayout.LayoutParams(dp(30),dp(30)).apply{marginEnd=dp(12)})
+    row.addView(TextView(this).apply{text=name;textSize=if(idx==0||idx==stops.lastIndex)17f else 15f;typeface=if(idx==0||idx==stops.lastIndex)android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT;setTextColor(nodeColor)},LinearLayout.LayoutParams(0,-2,1f))
+    if(p.second.isNotBlank())row.addView(TextView(this).apply{text=p.second;textSize=13f;typeface=android.graphics.Typeface.MONOSPACE;setTextColor(nodeColor)})
+    timeline.addView(row)
+    if(idx<stops.lastIndex)timeline.addView(View(this).apply{setBackgroundColor(0xffd5cbbf.toInt())},LinearLayout.LayoutParams(dp(2),dp(12)).apply{leftMargin=dp(14)})
+   }
+   add(timeline)
+   add(button("Correct this route"){editRoute(r)})
+   val actions=LinearLayout(this).apply{orientation=0}
+   actions.addView(button("Copy Route"){editRoute(r,true)},LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(4)})
+   actions.addView(button("Return Route"){editRoute(r,false,true)},LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(4)})
+   add(actions)
    add(button("Delete route",false){confirm("Move this route to Recycle Bin?"){task{val res=publishChange("route",r.id,"delete",j);toast("Published successfully · revision "+res.optLong("revision"));sync.sync();routeList()}}})
   }
  }
@@ -87,7 +111,31 @@ class MainActivity:ComponentActivity() {
  private suspend fun renderRouteRows(q:String,correction:Boolean){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{it.fromId.contains(q,true)||it.toId.contains(q,true)||it.id.contains(q,true)||it.payload.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));rows.forEach{r->val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard(a+" → "+b,r.time?:("No time · "+r.id)){if(correction)editRoute(r)else routeDetail(r)})}}
  private fun editRoute(old:RouteRow?,copy:Boolean=false,reverse:Boolean=false,prefill:List<JSONObject>?=null,reviewRequest:Pair<String,JSONObject>?=null){screen(if(old==null)"Add Route" else "Correction Route");task{sync.sync();val places=dao.allPlaces();if(places.size<2)throw IllegalStateException("Add at least two bus stops first.");val oldJson=old?.let{JSONObject(it.payload)};val drafts=mutableListOf<JSONObject>();if(prefill!=null){drafts.addAll(prefill)}else if(oldJson!=null){val ids=mutableListOf<String>();ids.add(if(reverse)oldJson.optString("to") else oldJson.optString("from"));val arr=oldJson.optJSONArray("stops")?:JSONArray();for(i in 0 until arr.length()){ids.add(arr.optJSONObject(i)?.optString("place")?:arr.optString(i))};ids.add(if(reverse)oldJson.optString("from") else oldJson.optString("to"));if(reverse)ids.reverse();ids.forEachIndexed{idx,id->val p=places.firstOrNull{it.id==id};val tm=if(copy||reverse)"" else if(idx==0)oldJson.optString("time") else arr.optJSONObject(idx-1)?.optString("time").orEmpty();drafts.add(JSONObject().put("place_id",id).put("name",p?.let{placeName(it)}?:id).put("time",tm))}}else{drafts.add(newStopDraft());drafts.add(newStopDraft())}
  val service=input("Service / bus name (optional)",if(copy)"" else reviewRequest?.second?.optString("service_name")?.takeIf{it.isNotBlank()}?:oldJson?.optString("service")?:"");val box=LinearLayout(this).apply{orientation=1};add(text("Add times where known. At least one stop must have a time.",13));add(box)
- fun renderRows(){box.removeAllViews();val addStart=button("＋ Add Start"){drafts.add(0,newStopDraft());renderRows()};box.addView(addStart);drafts.forEachIndexed{idx,d->val row=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL};row.addView(text((idx+1).toString(),13,true),LinearLayout.LayoutParams(dp(28),-2));val name=AutoCompleteTextView(this).apply{hint=if(idx==0)"Start stop" else if(idx==drafts.lastIndex)"Destination" else "Stop name";threshold=1;setSingleLine(true);setText(d.optString("name"),false)};val choices=places.filter{p->drafts.none{it!==d&&it.optString("place_id")==p.id}};name.setAdapter(ArrayAdapter(this,android.R.layout.simple_dropdown_item_1line,choices.map{placeName(it)}));name.setOnItemClickListener{_,_,pos,_->val p=choices[pos];d.put("place_id",p.id).put("name",placeName(p))};name.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){if(d.optString("name")!=s.toString())d.put("place_id",JSONObject.NULL).put("name",s.toString())};override fun afterTextChanged(e:android.text.Editable?){}});row.addView(name,LinearLayout.LayoutParams(0,dp(48),1f));row.addView(button(d.optString("time").ifBlank{"◷"}){val cal=java.util.Calendar.getInstance();android.app.TimePickerDialog(this,{_,h,m->d.put("time",String.format(java.util.Locale.ROOT,"%02d:%02d",h,m));renderRows()},cal.get(11),cal.get(12),true).show()},LinearLayout.LayoutParams(dp(66),dp(44)));row.addView(button("⋮",false){AlertDialog.Builder(this).setItems(arrayOf("Add below","Move up","Move down","Remove")){_,which->when(which){0->drafts.add(idx+1,newStopDraft());1->if(idx>0){val x=drafts.removeAt(idx);drafts.add(idx-1,x)};2->if(idx<drafts.lastIndex){val x=drafts.removeAt(idx);drafts.add(idx+1,x)};3->if(drafts.size>2)drafts.removeAt(idx)else toast("At least two stops required")};renderRows()}.show()},LinearLayout.LayoutParams(dp(48),dp(44)));box.addView(row)};box.addView(button("＋ Add Stop at End"){drafts.add(newStopDraft());renderRows()})}
+ fun renderRows(){
+  box.removeAllViews()
+  val actionStyle=GradientDrawable().apply{setColor(0xffdce9f8.toInt());setStroke(dp(1),0xffc0d7f0.toInt());cornerRadius=dp(14).toFloat()}
+  val addStart=button("＋ Add Start"){drafts.add(0,newStopDraft());renderRows()}
+  addStart.background=actionStyle;box.addView(addStart,LinearLayout.LayoutParams(-1,dp(44)).apply{bottomMargin=dp(10)})
+  drafts.forEachIndexed{idx,d->
+   val first=idx==0;val last=idx==drafts.lastIndex
+   val row=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(8),dp(6),dp(6),dp(6));minimumHeight=dp(58);background=GradientDrawable().apply{setColor(0xfff7f4ee.toInt());setStroke(dp(1),0xffe6dfd4.toInt());cornerRadius=dp(16).toFloat()}}
+   val badgeColor=if(first)0xff137a55.toInt() else if(last)0xffe05a1e.toInt() else 0xffdce9f8.toInt()
+   val badgeText=if(first||last)Color.WHITE else 0xff153456.toInt()
+   row.addView(TextView(this).apply{text=(idx+1).toString();gravity=Gravity.CENTER;textSize=12f;typeface=android.graphics.Typeface.MONOSPACE;setTextColor(badgeText);background=GradientDrawable().apply{shape=GradientDrawable.OVAL;setColor(badgeColor)}},LinearLayout.LayoutParams(dp(28),dp(28)).apply{marginEnd=dp(8)})
+   val name=AutoCompleteTextView(this).apply{hint=if(first)"Start stop" else if(last)"Destination" else "Stop name";threshold=1;textSize=14f;setSingleLine(true);setPadding(dp(2),0,dp(4),0);setBackgroundColor(Color.TRANSPARENT);setText(d.optString("name"),false)}
+   val choices=places.filter{p->drafts.none{it!==d&&it.optString("place_id")==p.id}}
+   name.setAdapter(ArrayAdapter(this,android.R.layout.simple_dropdown_item_1line,choices.map{placeName(it)}))
+   name.setOnItemClickListener{_,_,pos,_->val p=choices[pos];d.put("place_id",p.id).put("name",placeName(p))}
+   name.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){if(d.optString("name")!=s.toString())d.put("place_id",JSONObject.NULL).put("name",s.toString())};override fun afterTextChanged(e:android.text.Editable?){}})
+   row.addView(name,LinearLayout.LayoutParams(0,dp(44),1f))
+   val time=TextView(this).apply{text=d.optString("time").ifBlank{"◷"};textSize=12f;typeface=android.graphics.Typeface.MONOSPACE;gravity=Gravity.CENTER;setPadding(dp(5),dp(4),dp(5),dp(4));setTextColor(if(d.optString("time").isBlank())0xff7a8493.toInt() else 0xff153456.toInt());background=GradientDrawable().apply{setColor(if(d.optString("time").isBlank())Color.WHITE else 0xffdce9f8.toInt());setStroke(dp(1),if(d.optString("time").isBlank())0xffe6dfd4.toInt() else 0xffc0d7f0.toInt());cornerRadius=dp(10).toFloat()};setOnClickListener{val cal=java.util.Calendar.getInstance();val parts=d.optString("time").split(":");val h=parts.getOrNull(0)?.toIntOrNull()?:cal.get(11);val m=parts.getOrNull(1)?.toIntOrNull()?:cal.get(12);android.app.TimePickerDialog(this@MainActivity,{_,hh,mm->val value=String.format(java.util.Locale.ROOT,"%02d:%02d",hh,mm);d.put("time",value);renderRows()},h,m,true).apply{setButton(-3,"Clear"){_,_->d.put("time",JSONObject.NULL);renderRows()}}.show()}}
+   row.addView(time,LinearLayout.LayoutParams(dp(58),dp(36)).apply{marginStart=dp(4)})
+   row.addView(TextView(this).apply{text="+";textSize=20f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=GradientDrawable().apply{setColor(0xff137a55.toInt());cornerRadius=dp(10).toFloat()};setOnClickListener{drafts.add(idx+1,newStopDraft());renderRows()}},LinearLayout.LayoutParams(dp(34),dp(36)).apply{marginStart=dp(5)})
+   row.addView(TextView(this).apply{text="⋮";textSize=20f;gravity=Gravity.CENTER;setTextColor(0xff535e6e.toInt());setOnClickListener{AlertDialog.Builder(this@MainActivity).setItems(arrayOf("Move up","Move down","Remove")){_,which->when(which){0->if(idx>0){val x=drafts.removeAt(idx);drafts.add(idx-1,x)};1->if(idx<drafts.lastIndex){val x=drafts.removeAt(idx);drafts.add(idx+1,x)};2->if(drafts.size>2)drafts.removeAt(idx)else toast("At least two stops required")};renderRows()}.show()}},LinearLayout.LayoutParams(dp(28),dp(38)).apply{marginStart=dp(2)})
+   box.addView(row,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,dp(4),0,dp(4))})
+  }
+  val addEnd=button("＋ Add Stop at End"){drafts.add(newStopDraft());renderRows()};addEnd.background=actionStyle;box.addView(addEnd,LinearLayout.LayoutParams(-1,dp(44)).apply{topMargin=dp(10)})
+ }
  renderRows();add(text("Service / Bus Name",13,true));add(service);add(button("Preview Route"){if(drafts.size<2||drafts.any{it.optString("name").isBlank()}||drafts.none{it.optString("time").matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))}){toast("Enter all stops and at least one valid time");return@button};screen("Route Preview");drafts.forEachIndexed{idx,d->add(text((idx+1).toString()+". "+d.optString("name")+"   "+d.optString("time").ifBlank{"—"}))};add(button("Back to Edit"){editRoute(old,copy,reverse,prefill,reviewRequest)});add(button("Publish Route"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})});add(button("Publish Route"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})
  }}
  private fun newStopDraft()=JSONObject().put("place_id",JSONObject.NULL).put("name","").put("time","")
