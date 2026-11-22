@@ -31,6 +31,13 @@ jobs:
             exit 1
           fi
           echo "APP_APPLICATION_ID=$APP_ID" >> "$GITHUB_ENV"
+      - name: Decode owner signing key when configured
+        if: ${{ secrets.TESTING_KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_B64: ${{ secrets.TESTING_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/testing.jks"
+          echo "TESTING_KEYSTORE_PATH=$RUNNER_TEMP/testing.jks" >> "$GITHUB_ENV"
       - name: Build debug APK
         run: gradle assembleDebug -PappVersionCode=${{ github.run_number }} -PAPP_APPLICATION_ID="$APP_APPLICATION_ID"
       - uses: actions/upload-artifact@v4
