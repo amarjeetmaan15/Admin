@@ -295,8 +295,14 @@ class MainActivity:ComponentActivity() {
    row.addView(TextView(this).apply{text=(idx+1).toString();gravity=Gravity.CENTER;textSize=12f;typeface=android.graphics.Typeface.MONOSPACE;setTextColor(badgeText);background=GradientDrawable().apply{shape=GradientDrawable.OVAL;setColor(badgeColor)}},LinearLayout.LayoutParams(dp(28),dp(28)).apply{marginEnd=dp(8)})
    val name=AutoCompleteTextView(this).apply{hint=if(first)"Start stop" else if(last)"Destination" else "Stop name";threshold=1;textSize=14f;setSingleLine(true);setPadding(dp(2),0,dp(4),0);setBackgroundColor(Color.TRANSPARENT);setText(d.optString("name"),false)}
    val choices=places.filter{p->drafts.none{it!==d&&it.optString("place_id")==p.id}}
-   name.setAdapter(ArrayAdapter(this,android.R.layout.simple_dropdown_item_1line,choices.map{placeName(it)}))
-   name.setOnItemClickListener{_,_,pos,_->val p=choices[pos];d.put("place_id",p.id).put("name",placeName(p))}
+   val choiceNames=choices.map{placeName(it)}
+   name.setAdapter(ArrayAdapter(this,android.R.layout.simple_dropdown_item_1line,choiceNames))
+   name.setOnItemClickListener{parent,_,pos,_->
+    val selectedName=parent.getItemAtPosition(pos)?.toString().orEmpty()
+    val p=choices.firstOrNull{placeName(it)==selectedName}
+    if(p==null){d.put("place_id",JSONObject.NULL).put("name",selectedName)}
+    else d.put("place_id",p.id).put("name",placeName(p))
+   }
    name.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){if(d.optString("name")!=s.toString())d.put("place_id",JSONObject.NULL).put("name",s.toString())};override fun afterTextChanged(e:android.text.Editable?){}})
    row.addView(name,LinearLayout.LayoutParams(0,dp(44),1f))
    val currentTime=d.optString("time").takeUnless{it.isBlank()||it=="null"}
@@ -328,11 +334,11 @@ class MainActivity:ComponentActivity() {
   line.addView(text(d.optString("time").ifBlank{"—"},12,true).apply{setTextColor(color)})
   add(line)
  }
- add(toolbarAction("‹  Back to Edit"){editRoute(old,copy,reverse,prefill,reviewRequest)})
- add(button("Publish Route  ✓"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})});add(button("Publish Route  ✓"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})
+ add(toolbarAction("‹  Back to Edit"){editRoute(old,copy,reverse,drafts.map{JSONObject(it.toString())},reviewRequest)})
+ add(button("Publish Route  ✓"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})})
  }}
  private fun newStopDraft()=JSONObject().put("place_id",JSONObject.NULL).put("name","").put("time","")
- private fun publishDraftRoute(old:RouteRow?,copy:Boolean,reverse:Boolean,drafts:List<JSONObject>,service:String,reviewRequest:Pair<String,JSONObject>?=null){task{val ids=drafts.map{it.optString("place_id")};val re=Regex("^([01]\\d|2[0-3]):[0-5]\\d$");if(drafts.any{it.optString("name").isBlank()}||ids.any{it.isBlank()||it=="null"}||ids.distinct().size<2)throw IllegalStateException("Select at least two valid stops.");if(drafts.none{re.matches(it.optString("time"))})throw IllegalStateException("At least one valid time is required.");val id=old?.id?.takeIf{!copy&&!reverse}?:("r_"+System.currentTimeMillis());val payload=JSONObject(old?.payload?:"{}").put("id",id).put("from",ids.first()).put("to",ids.last()).put("time",drafts.first().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL).put("service",service).put("stops",JSONArray().apply{drafts.drop(1).dropLast(1).forEach{put(JSONObject().put("place",it.optString("place_id")).put("time",it.optString("time").takeIf{v->re.matches(v)}?:JSONObject.NULL))}});val res=api.publish(JSONObject().put("action","publish").put("changes",JSONArray().put(JSONObject().put("entity_type","route").put("entity_id",id).put("operation","upsert").put("payload",payload))));if(reviewRequest!=null){api.publish(JSONObject().put("action","review-status").put("table",reviewRequest.first).put("id",reviewRequest.second.optString("id")).put("status","approved"))};toast(if(reviewRequest!=null)"Route published and request approved · revision "+res.optLong("revision") else "Published · revision "+res.optLong("revision"));sync.sync();if(reviewRequest!=null)reviews()else home()}}
+ private fun publishDraftRoute(old:RouteRow?,copy:Boolean,reverse:Boolean,drafts:List<JSONObject>,service:String,reviewRequest:Pair<String,JSONObject>?=null){task{val places=dao.allPlaces();val ids=drafts.map{it.optString("place_id")};val re=Regex("^([01]\\d|2[0-3]):[0-5]\\d$");if(drafts.any{it.optString("name").isBlank()}||ids.any{it.isBlank()||it=="null"}||ids.distinct().size<2)throw IllegalStateException("Select at least two valid stops.");val mismatched=drafts.firstOrNull{d->val p=places.firstOrNull{it.id==d.optString("place_id")};p==null||placeName(p)!=d.optString("name")};if(mismatched!=null)throw IllegalStateException("Stop name and saved place ID do not match. Please select the stop again.");if(drafts.none{re.matches(it.optString("time"))})throw IllegalStateException("At least one valid time is required.");val id=old?.id?.takeIf{!copy&&!reverse}?:("r_"+System.currentTimeMillis());val payload=JSONObject(old?.payload?:"{}").put("id",id).put("from",ids.first()).put("to",ids.last()).put("time",drafts.first().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL).put("service",service).put("stops",JSONArray().apply{drafts.drop(1).dropLast(1).forEach{put(JSONObject().put("place",it.optString("place_id")).put("time",it.optString("time").takeIf{v->re.matches(v)}?:JSONObject.NULL))}});val res=api.publish(JSONObject().put("action","publish").put("changes",JSONArray().put(JSONObject().put("entity_type","route").put("entity_id",id).put("operation","upsert").put("payload",payload))));if(reviewRequest!=null){api.publish(JSONObject().put("action","review-status").put("table",reviewRequest.first).put("id",reviewRequest.second.optString("id")).put("status","approved"))};toast(if(reviewRequest!=null)"Route published and request approved · revision "+res.optLong("revision") else "Published · revision "+res.optLong("revision"));sync.sync();if(reviewRequest!=null)reviews()else home()}}
  private fun editReviewRoute(table:String,item:JSONObject){
   task{
    sync.sync()
