@@ -30,10 +30,16 @@ jobs:
       - name: Decode owner signing key when configured
         env:
           KEYSTORE_B64: ${{ secrets.TESTING_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ADMIN_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ADMIN_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ADMIN_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
             echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/testing.jks"
             echo "TESTING_KEYSTORE_PATH=$RUNNER_TEMP/testing.jks" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
           else
             echo "No owner keystore configured; using the temporary Android debug key."
           fi
