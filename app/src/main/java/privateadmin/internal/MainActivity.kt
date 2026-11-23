@@ -466,10 +466,122 @@ class MainActivity:ComponentActivity() {
  private var historyItems=mutableListOf<JSONObject>()
  private var historyHasMore=false
  private var historyState:JSONObject?=null
- private fun history(reset:Boolean){if(reset){historyItems.clear();historyHasMore=false};screen("History");add(toolbarAction("↻  Refresh"){history(true)});task{val before=if(!reset)historyItems.lastOrNull()?.optLong("revision") else null;val req=JSONObject().put("limit",200);if(before!=null&&before>0)req.put("before_revision",before);val result=api.history(req);val rows=result.optJSONArray("items")?:JSONArray();for(i in 0 until rows.length())historyItems.add(rows.getJSONObject(i));historyHasMore=result.optBoolean("has_more");historyState=result.optJSONObject("state");renderHistoryRows()}}
- private fun historyChanged(row:JSONObject):String{if(row.optString("operation")=="delete")return "Moved to Recycle Bin";val before=row.optJSONObject("before")?:return "New or first version in this list";val after=row.optJSONObject("payload")?:JSONObject();val keys=(before.keys().asSequence().toList()+after.keys().asSequence().toList()).distinct();val changed=keys.filter{before.opt(it).toString()!=after.opt(it).toString()};return if(changed.isEmpty())"Re-published, no field changed" else "Changed: "+changed.joinToString(", ")}
- private fun historyLabel(row:JSONObject):String{val p=row.optJSONObject("payload")?:row.optJSONObject("before")?:JSONObject();if(row.optString("entity_type")=="route")return p.optString("from","?")+" → "+p.optString("to","?")+p.optString("time").takeIf{it.isNotBlank()}?.let{" · "+it}.orEmpty();val n=p.optJSONObject("name")?:JSONObject();return n.optString("en").ifBlank{n.optString("hi").ifBlank{n.optString("pa").ifBlank{row.optString("entity_id")}}}}
- private fun renderHistoryRows(){val state=historyState;add(text(if(state==null)"Published route and bus-stop changes, newest first." else "Current revision "+state.optLong("revision")+" · Last published "+state.optString("published_at"),13));if(historyItems.isEmpty())add(text("No history yet.",14));var lastRevision=-1L;historyItems.forEach{row->val revision=row.optLong("revision");val date=runCatching{java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a",java.util.Locale("en","IN")).apply{timeZone=java.util.TimeZone.getTimeZone("Asia/Kolkata")}.format(java.util.Date(java.time.Instant.parse(row.optString("created_at")).toEpochMilli()))}.getOrDefault(row.optString("created_at"));val card=LinearLayout(this).apply{orientation=1;setPadding(dp(14),dp(12),dp(14),dp(12));background=GradientDrawable().apply{setColor(Color.WHITE);cornerRadius=dp(14).toFloat();setStroke(dp(1),0xffe1e7ef.toInt())}};card.addView(text(if(revision!=lastRevision)"Revision "+revision+" · "+date else date,12,true));lastRevision=revision;card.addView(text(row.optString("entity_type").uppercase()+" · "+historyLabel(row),15,true));card.addView(text("ID: "+row.optString("entity_id")+" · "+row.optString("operation"),11));card.addView(text(historyChanged(row),13));add(card)};if(historyHasMore)add(button("Load older history"){history(false)})}
+ private var historyList:LinearLayout?=null
+ private var historyStatus:TextView?=null
+ private var historyLoadButton:Button?=null
+ private var historyLoading=false
+ private fun history(reset:Boolean){
+  if(reset){historyItems.clear();historyHasMore=false;historyState=null}
+  screen("History",true,"Complete publishing activity · newest changes first")
+  val actions=LinearLayout(this).apply{orientation=0}
+  actions.addView(toolbarAction("↻  Refresh"){history(true)},LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(8)})
+  actions.addView(toolbarAction("Latest first"){history(true)},LinearLayout.LayoutParams(0,dp(42),1f))
+  add(actions)
+  historyStatus=text("Loading history…",13).apply{setTextColor(0xff64748b.toInt())}
+  add(historyStatus!!)
+  historyList=LinearLayout(this).apply{orientation=1}
+  add(historyList!!)
+  loadHistoryPage(reset)
+ }
+ private fun loadHistoryPage(reset:Boolean){
+  if(historyLoading)return
+  historyLoading=true
+  historyLoadButton?.isEnabled=false
+  historyStatus?.text=if(reset)"Loading latest history…" else "Loading older history…"
+  lifecycleScope.launch{
+   try{
+    val before=if(!reset)historyItems.lastOrNull()?.optLong("revision") else null
+    val req=JSONObject().put("limit",200)
+    if(before!=null&&before>0)req.put("before_revision",before)
+    val result=api.history(req)
+    val rows=result.optJSONArray("items")?:JSONArray()
+    val known=historyItems.map{it.optLong("revision")}.toHashSet()
+    for(i in 0 until rows.length()){
+     val row=rows.getJSONObject(i)
+     if(known.add(row.optLong("revision")))historyItems.add(row)
+    }
+    historyHasMore=result.optBoolean("has_more")
+    historyState=result.optJSONObject("state")
+    renderHistoryRows()
+   }catch(e:Exception){
+    historyStatus?.text="Could not load history: "+(e.message?: "Request failed")
+    val retry=button("Retry"){loadHistoryPage(reset)}
+    historyList?.removeAllViews()
+    historyList?.addView(retry,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(8)})
+   }finally{
+    historyLoading=false
+    historyLoadButton?.isEnabled=historyHasMore
+   }
+  }
+ }
+ private fun historyChanged(row:JSONObject):String{
+  if(row.optString("operation")=="delete")return "Moved to Recycle Bin"
+  val before=row.optJSONObject("before")?:return "New or first version in available history"
+  val after=row.optJSONObject("payload")?:JSONObject()
+  val keys=(before.keys().asSequence().toList()+after.keys().asSequence().toList()).distinct()
+  val changed=keys.filter{before.opt(it).toString()!=after.opt(it).toString()}
+  return if(changed.isEmpty())"Re-published · no field changes detected" else changed.joinToString(", ")
+ }
+ private fun historyLabel(row:JSONObject):String{
+  val p=row.optJSONObject("payload")?:row.optJSONObject("before")?:JSONObject()
+  if(row.optString("entity_type")=="route")return p.optString("from","?")+" → "+p.optString("to","?")+p.optString("time").takeIf{it.isNotBlank()}?.let{" · "+it}.orEmpty()
+  val n=p.optJSONObject("name")?:JSONObject()
+  return n.optString("en").ifBlank{n.optString("hi").ifBlank{n.optString("pa").ifBlank{row.optString("entity_id")}}}
+ }
+ private fun historySource(row:JSONObject):String=when(row.optString("source").lowercase()){
+  "web_admin"->"Web Admin"
+  "android_app"->"Android App"
+  "legacy",""->"Legacy / Unknown"
+  else->row.optString("source").replace('_',' ').replaceFirstChar{it.uppercase()}
+ }
+ private fun historyDate(value:String):String=runCatching{
+  java.text.SimpleDateFormat("dd MMM yyyy · hh:mm a",java.util.Locale("en","IN")).apply{
+   timeZone=java.util.TimeZone.getTimeZone("Asia/Kolkata")
+  }.format(java.util.Date(java.time.Instant.parse(value).toEpochMilli()))
+ }.getOrDefault(value.ifBlank{"Date unavailable"})
+ private fun historyPill(label:String,bg:Int,fg:Int):TextView=text(label,11,true).apply{
+  setTextColor(fg);gravity=Gravity.CENTER;setPadding(dp(9),dp(5),dp(9),dp(5))
+  background=GradientDrawable().apply{setColor(bg);cornerRadius=dp(20).toFloat()}
+ }
+ private fun renderHistoryRows(){
+  val list=historyList?:return
+  list.removeAllViews()
+  val state=historyState
+  val revision=state?.optLong("revision")?:0L
+  val published=state?.optString("published_at").orEmpty()
+  historyStatus?.text=if(state!=null)"Current revision $revision · Last published "+historyDate(published) else historyItems.size.toString()+" history records"
+  if(historyItems.isEmpty())list.addView(text("No history records found.",14))
+  historyItems.forEach{row->
+   val revisionNo=row.optLong("revision")
+   val type=row.optString("entity_type","record").replace('_',' ').uppercase()
+   val operation=row.optString("operation","unknown").replace('_',' ').uppercase()
+   val source=historySource(row)
+   val sourceColors=when(source){"Web Admin"->0xffe8f1ff.toInt() to 0xff245b8f.toInt();"Android App"->0xffe7f7ef.toInt() to 0xff147d55.toInt();else->0xfff1f3f5.toInt() to 0xff596579.toInt()}
+   val card=LinearLayout(this).apply{
+    orientation=1;setPadding(dp(14),dp(13),dp(14),dp(13))
+    background=GradientDrawable().apply{setColor(Color.WHITE);cornerRadius=dp(14).toFloat();setStroke(dp(1),0xffdfe6ef.toInt())}
+   }
+   val top=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL}
+   top.addView(text("Revision #"+revisionNo,14,true),LinearLayout.LayoutParams(0,-2,1f))
+   top.addView(historyPill(source,sourceColors.first,sourceColors.second))
+   card.addView(top)
+   card.addView(text(historyDate(row.optString("created_at")),12).apply{setTextColor(0xff64748b.toInt());setPadding(0,dp(5),0,dp(8))})
+   card.addView(text(historyLabel(row),16,true))
+   card.addView(text(type+"  ·  "+operation,12,true).apply{setTextColor(0xff245b8f.toInt());setPadding(0,dp(5),0,dp(7))})
+   card.addView(text("Record ID",10,true).apply{setTextColor(0xff64748b.toInt())})
+   card.addView(text(row.optString("entity_id").ifBlank{"Not available"},12).apply{setTextIsSelectable(true);setPadding(0,0,0,dp(8))})
+   card.addView(text("WHAT CHANGED",10,true).apply{setTextColor(0xff64748b.toInt())})
+   card.addView(text(historyChanged(row),13).apply{setTextIsSelectable(true);setPadding(0,dp(3),0,0)})
+   list.addView(card,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(10)})
+  }
+  if(historyHasMore){
+   historyLoadButton=button("Load older history",true){loadHistoryPage(false)}
+   list.addView(historyLoadButton,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(4);bottomMargin=dp(12)})
+  }else{
+   historyLoadButton=null
+   if(historyItems.isNotEmpty())list.addView(text("You’re all caught up · no older records",12).apply{gravity=Gravity.CENTER;setTextColor(0xff64748b.toInt());setPadding(0,dp(10),0,dp(14))})
+  }
+ }
  private fun recycle(){
   screen("Recycle Bin");add(toolbarAction("↻  Refresh"){recycle()})
   task{val a=api.publish(JSONObject().put("action","recycle-list")).optJSONArray("items")?:JSONArray()
