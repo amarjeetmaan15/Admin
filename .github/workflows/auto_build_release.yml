@@ -34,15 +34,15 @@ jobs:
           KEY_ALIAS: ${{ secrets.ADMIN_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ADMIN_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/testing.jks"
-            echo "TESTING_KEYSTORE_PATH=$RUNNER_TEMP/testing.jks" >> "$GITHUB_ENV"
-            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          else
-            echo "No owner keystore configured; using the temporary Android debug key."
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Permanent signing secrets are missing. Configure TESTING_KEYSTORE_BASE64, ADMIN_KEYSTORE_PASSWORD, ADMIN_KEY_ALIAS, and ADMIN_KEY_PASSWORD."
+            exit 1
           fi
+          echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/testing.jks"
+          echo "TESTING_KEYSTORE_PATH=$RUNNER_TEMP/testing.jks" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
       - name: Build debug APK
         run: gradle assembleDebug -PappVersionCode=${{ github.run_number }} -PAPP_APPLICATION_ID="$APP_APPLICATION_ID"
       - uses: actions/upload-artifact@v4
