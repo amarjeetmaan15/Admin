@@ -14,6 +14,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity:ComponentActivity() {
  private val api=SupabaseApi()
@@ -119,8 +125,58 @@ class MainActivity:ComponentActivity() {
   }else{
    analyticsTab()
   }
+  add(button(tr("Check for Update","अपडेट चेक करें","ਅੱਪਡੇਟ ਚੈੱਕ ਕਰੋ"),true){checkForUpdate()})
   add(button(tr("Sign out","साइन आउट","ਸਾਈਨ ਆਉਟ"),false){api.session=null;getPreferences(0).edit().clear().apply();login()})
  }
+
+ private fun checkForUpdate(){
+  task {
+   toast("Checking for updates…")
+   val release=withContext(kotlinx.coroutines.Dispatchers.IO){
+    val connection=(URL("https://api.github.com/repos/amarjeetmaan15/Admin/releases/latest").openConnection() as HttpURLConnection)
+    connection.connectTimeout=15000;connection.readTimeout=20000
+    connection.setRequestProperty("Accept","application/vnd.github+json")
+    connection.setRequestProperty("User-Agent","Bustime-Admin-Updater")
+    try {
+     if(connection.responseCode !in 200..299) throw IllegalStateException("Update check failed (HTTP "+connection.responseCode+").")
+     JSONObject(connection.inputStream.bufferedReader().use{it.readText()})
+    } finally { connection.disconnect() }
+   }
+   val assets=release.optJSONArray("assets")?:JSONArray()
+   var apkUrl=""
+   for(i in 0 until assets.length()){
+    val asset=assets.optJSONObject(i)?:continue
+    if(asset.optString("name").endsWith(".apk",true)){apkUrl=asset.optString("browser_download_url");if(apkUrl.isNotBlank())break}
+   }
+   if(apkUrl.isBlank())throw IllegalStateException("No APK is attached to the latest release.")
+   if(!apkUrl.startsWith("https://github.com/amarjeetmaan15/Admin/releases/download/"))throw IllegalStateException("Invalid update download address.")
+   val latestCode=Regex("build-(\\d+)",RegexOption.IGNORE_CASE).find(release.optString("tag_name"))?.groupValues?.get(1)?.toLongOrNull()?:0L
+   val installedInfo=packageManager.getPackageInfo(packageName,0)
+   @Suppress("DEPRECATION")
+   val installedCode=if(android.os.Build.VERSION.SDK_INT>=28)installedInfo.longVersionCode else installedInfo.versionCode.toLong()
+   if(latestCode<=installedCode){toast("You're using the latest version.");return@task}
+   toast("New update found. Downloading…")
+   val apk=withContext(kotlinx.coroutines.Dispatchers.IO){
+    val connection=(URL(apkUrl).openConnection() as HttpURLConnection)
+    connection.connectTimeout=15000;connection.readTimeout=60000;connection.instanceFollowRedirects=true
+    try {
+     if(connection.responseCode !in 200..299)throw IllegalStateException("APK download failed (HTTP "+connection.responseCode+").")
+     val file=File(cacheDir,"admin-update.apk")
+     connection.inputStream.use{input->file.outputStream().use{output->input.copyTo(output)}}
+     file
+    } finally {connection.disconnect()}
+   }
+   val uri=FileProvider.getUriForFile(this@MainActivity,packageName+".fileprovider",apk)
+   if(android.os.Build.VERSION.SDK_INT>=26&&!packageManager.canRequestPackageInstalls()){
+    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:$packageName")))
+    toast("Allow app installs, then tap Check for Update again.")
+    return@task
+   }
+   val install=Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+   startActivity(install)
+  }
+ }
+
 
  private fun sectionTitle(title:String,subtitle:String=""){add(text(title,18,true));if(subtitle.isNotBlank())add(text(subtitle,12).apply{setTextColor(0xff64748b.toInt())})}
  private fun adToggle(label:String,checked:Boolean,onChange:(Boolean)->Unit):Switch {val v=Switch(this).apply{text=label;isChecked=checked;textSize=14f;setPadding(dp(4),dp(8),dp(4),dp(8));setOnCheckedChangeListener{_,b->onChange(b)}};add(v);return v}
