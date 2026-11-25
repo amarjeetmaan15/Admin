@@ -57,7 +57,7 @@ class MainActivity:ComponentActivity() {
  private var currentBackAction:(()->Unit)?=null
  private fun findBody(v:View):LinearLayout?{if(v is LinearLayout && v.tag=="admin_page_body")return v;if(v is android.view.ViewGroup)for(i in 0 until v.childCount)findBody(v.getChildAt(i))?.let{return it};return null}
  private fun goBack(){val action=currentBackAction;if(action!=null){currentBackAction=null;action();return};AlertDialog.Builder(this).setMessage("Do you want to exit Bustime Operations?").setNegativeButton("Cancel",null).setPositiveButton("Exit"){_,_->finish()}.show()}
- private fun screen(title:String,back:Boolean=true,subtitle:String="",onBack:(()->Unit)?=null,compact:Boolean=false){
+ private fun screen(title:String,back:Boolean=true,subtitle:String="",compact:Boolean=false,onBack:(()->Unit)?=null){
   currentBackAction=if(back)(onBack?:{home()})else null
   val root=LinearLayout(this).apply{orientation=1;setPadding(dp(if(compact)16 else 24),dp(if(compact)8 else 16),dp(if(compact)16 else 24),dp(24));setBackgroundColor(Color.WHITE)}
   root.addView(TextView(this).apply{text=title;textSize=if(compact)18f else 24f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(0xff161b22.toInt());setPadding(0,0,0,dp(if(compact)2 else 8))})
