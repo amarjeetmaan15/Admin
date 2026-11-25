@@ -753,7 +753,7 @@ class MainActivity:ComponentActivity() {
   val before=row.optJSONObject("before")?:return "New or first version in available history"
   val after=row.optJSONObject("payload")?:JSONObject()
   val keys=(before.keys().asSequence().toList()+after.keys().asSequence().toList()).distinct()
-  val changed=keys.filter{before.opt(it).toString()!=after.opt(it).toString()}
+  val changed=keys.filter{(before.opt(it)?:JSONObject.NULL).toString()!=(after.opt(it)?:JSONObject.NULL).toString()}
   return if(changed.isEmpty())"Re-published · no field changes detected" else changed.joinToString(", ")
  }
  private fun historyLabel(row:JSONObject):String{
