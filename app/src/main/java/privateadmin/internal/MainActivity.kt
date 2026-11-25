@@ -54,13 +54,11 @@ class MainActivity:ComponentActivity() {
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);onBackPressedDispatcher.addCallback(this,object:androidx.activity.OnBackPressedCallback(true){override fun handleOnBackPressed(){goBack()}});dao=LocalDb.get(this).dao();sync=SyncEngine(api,dao);lang=runCatching{UiLanguage.valueOf(getPreferences(0).getString("lang","EN")!!)}.getOrDefault(UiLanguage.EN)
   val p=getPreferences(0);if(p.contains("access")){api.session=Session(p.getString("access","")!!,p.getString("refresh","")!!,p.getLong("expiry",0));home()}else login()
  }
- private val pageStack=java.util.ArrayDeque<View>()
- private var skipNextScreenPush=false
- private fun navigateToFreshParent(renderParent:()->Unit){if(pageStack.isNotEmpty())pageStack.removeLast();skipNextScreenPush=true;renderParent()}
+ private var currentBackAction:(()->Unit)?=null
  private fun findBody(v:View):LinearLayout?{if(v is LinearLayout && v.tag=="admin_page_body")return v;if(v is android.view.ViewGroup)for(i in 0 until v.childCount)findBody(v.getChildAt(i))?.let{return it};return null}
- private fun goBack(){if(pageStack.isNotEmpty()){setContentView(pageStack.removeLast());body=(findViewById<View>(android.R.id.content) as? android.view.ViewGroup)?.getChildAt(0)?.let{findBody(it)};return};AlertDialog.Builder(this).setMessage("Do you want to exit Bustime Operations?").setNegativeButton("Cancel",null).setPositiveButton("Exit"){_,_->finish()}.show()}
- private fun screen(title:String,back:Boolean=true,subtitle:String=""){
-  val previous=(findViewById<View>(android.R.id.content) as? android.view.ViewGroup)?.getChildAt(0);if(previous!=null&&back&&!skipNextScreenPush)pageStack.addLast(previous);skipNextScreenPush=false
+ private fun goBack(){val action=currentBackAction;if(action!=null){currentBackAction=null;action();return};AlertDialog.Builder(this).setMessage("Do you want to exit Bustime Operations?").setNegativeButton("Cancel",null).setPositiveButton("Exit"){_,_->finish()}.show()}
+ private fun screen(title:String,back:Boolean=true,subtitle:String="",onBack:(()->Unit)?=null){
+  currentBackAction=if(back)(onBack?:{home()})else null
   val root=LinearLayout(this).apply{orientation=1;setPadding(dp(24),dp(16),dp(24),dp(24));setBackgroundColor(Color.WHITE)}
   root.addView(TextView(this).apply{text=title;textSize=24f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(0xff161b22.toInt());setPadding(0,0,0,dp(8))})
   if(subtitle.isNotBlank())root.addView(TextView(this).apply{text=subtitle;textSize=14f;setTextColor(0xff535e6e.toInt());setPadding(0,0,0,dp(12))})
@@ -99,9 +97,9 @@ class MainActivity:ComponentActivity() {
  private fun task(fn:suspend()->Unit){lifecycleScope.launch{try{fn()}catch(e:Exception){toast(e.message?: "Request failed")}}}
  private suspend fun prepareData():Long=dataInitMutex.withLock{SnapshotSeeder.seed(assets,dao);sync.sync()}.also{currentMdmRevision=it}
  private fun toast(s:String){Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
- private fun login(){pageStack.clear();screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
+ private fun login(){currentBackAction=null;screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
  private var adConfig=JSONObject()
- private fun home(selectedTab:String="existing"){pageStack.clear();screen("Bustime Operations",false)
+ private fun home(selectedTab:String="existing"){currentBackAction=null;screen("Bustime Operations",false)
   val language=Spinner(this);language.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("English","हिन्दी","ਪੰਜਾਬੀ"));language.setSelection(lang.ordinal);language.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener{override fun onNothingSelected(p:android.widget.AdapterView<*>?){};override fun onItemSelected(p:android.widget.AdapterView<*>?,v:View?,pos:Int,id:Long){lang=UiLanguage.values()[pos];getPreferences(0).edit().putString("lang",lang.name).apply()}};add(language)
   val tabs=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
   fun tab(label:String,key:String){
@@ -321,7 +319,7 @@ class MainActivity:ComponentActivity() {
    val stops=mutableListOf<Pair<String,String>>();stops.add(r.fromId to j.optString("time"))
    val arr=j.optJSONArray("stops")?:JSONArray();for(i in 0 until arr.length()){val x=arr.optJSONObject(i);if(x!=null)stops.add(x.optString("place") to x.optString("time"))}
    stops.add(r.toId to j.optString("arrive").takeUnless{it.isBlank()||it=="null"}.orEmpty())
-   screen("$from → $to",true)
+   screen("$from → $to",true,""){routeList()}
    val hero=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(14),dp(16),dp(14));background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(0xff0c2038.toInt(),0xff153456.toInt(),0xff255589.toInt())).apply{cornerRadius=dp(16).toFloat()}}
    hero.addView(TextView(this).apply{text="$from → $to";textSize=20f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(Color.WHITE);setPadding(0,0,0,dp(6))})
    val service=j.optString("service").ifBlank{j.optString("routeName")}
@@ -342,12 +340,12 @@ class MainActivity:ComponentActivity() {
     if(idx<stops.lastIndex)timeline.addView(View(this).apply{setBackgroundColor(0xffd5cbbf.toInt())},LinearLayout.LayoutParams(dp(2),dp(12)).apply{leftMargin=dp(14)})
    }
    add(timeline)
-   add(button("Correct this route"){editRoute(r)})
+   add(button("Correct this route"){editRoute(r,backAction={routeDetail(r)})})
    val actions=LinearLayout(this).apply{orientation=0}
-   actions.addView(button("Copy Route"){editRoute(r,true)},LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(4)})
-   actions.addView(button("Return Route"){editRoute(r,false,true)},LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(4)})
+   actions.addView(button("Copy Route"){editRoute(r,true,backAction={routeDetail(r)})},LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(4)})
+   actions.addView(button("Return Route"){editRoute(r,false,true,backAction={routeDetail(r)})},LinearLayout.LayoutParams(0,-2,1f).apply{marginStart=dp(4)})
    add(actions)
-   add(button("Delete route",false){confirm("Move this route to Recycle Bin?"){task{val res=publishChange("route",r.id,"delete",j);toast("Published successfully · revision "+res.optLong("revision"));prepareData();navigateToFreshParent{routeList()}}}})
+   add(button("Delete route",false){confirm("Move this route to Recycle Bin?"){task{val res=publishChange("route",r.id,"delete",j);toast("Published successfully · revision "+res.optLong("revision"));prepareData();routeList()}}})
   }
  }
  private suspend fun publishSharedChanges(changes:JSONArray):JSONObject{
@@ -375,8 +373,8 @@ class MainActivity:ComponentActivity() {
 
  private fun correctionRouteList(){routeListForCorrection()}
  private fun routeListForCorrection(){screen("Correction Route");val q=input("Search routes");add(q);task{prepareData();renderRouteRows(q.text.toString(),true)};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{renderRouteRows(s.toString(),true)}};override fun afterTextChanged(e:android.text.Editable?){}})}
- private suspend fun renderRouteRows(q:String,correction:Boolean){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{r->val j=JSONObject(r.payload);val names=mutableListOf<String>(r.id,r.fromId,r.toId,placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}")),placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}")));val a=j.optJSONArray("stops")?:JSONArray();for(i in 0 until a.length()){val id=a.optJSONObject(i)?.optString("place")?:a.optString(i);names.add(id);places.firstOrNull{it.id==id}?.let{names.add(placeName(it))}};q.isBlank()||names.any{it.contains(q,true)}||j.optString("service").contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));rows.forEach{r->val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard(a+" → "+b,r.time?:("No time · "+r.id)){if(correction)editRoute(r)else routeDetail(r)})}}
- private fun editRoute(old:RouteRow?,copy:Boolean=false,reverse:Boolean=false,prefill:List<JSONObject>?=null,reviewRequest:Pair<String,JSONObject>?=null,prefillService:String?=null){screen(if(old==null)"Add Route" else "Correction Route");task{prepareData();val places=dao.allPlaces();if(places.size<2)throw IllegalStateException("Add at least two bus stops first.");val oldJson=old?.let{JSONObject(it.payload)};val drafts=mutableListOf<JSONObject>();if(prefill!=null){drafts.addAll(prefill)}else if(oldJson!=null){val ids=mutableListOf<String>();ids.add(if(reverse)oldJson.optString("to") else oldJson.optString("from"));val arr=oldJson.optJSONArray("stops")?:JSONArray();for(i in 0 until arr.length()){ids.add(arr.optJSONObject(i)?.optString("place")?:arr.optString(i))};ids.add(if(reverse)oldJson.optString("from") else oldJson.optString("to"));if(reverse)ids.reverse();ids.forEachIndexed{idx,id->val p=places.firstOrNull{it.id==id};val tm=if(copy||reverse)"" else when(idx){0->oldJson.optString("time").takeUnless{it=="null"}.orEmpty();ids.lastIndex->oldJson.optString("arrive").takeUnless{it=="null"}.orEmpty();else->arr.optJSONObject(idx-1)?.optString("time")?.takeUnless{it=="null"}.orEmpty()};drafts.add(JSONObject().put("place_id",id).put("name",p?.let{placeName(it)}?:id).put("time",tm))}}else{drafts.add(newStopDraft());drafts.add(newStopDraft())}
+ private suspend fun renderRouteRows(q:String,correction:Boolean){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{r->val j=JSONObject(r.payload);val names=mutableListOf<String>(r.id,r.fromId,r.toId,placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}")),placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}")));val a=j.optJSONArray("stops")?:JSONArray();for(i in 0 until a.length()){val id=a.optJSONObject(i)?.optString("place")?:a.optString(i);names.add(id);places.firstOrNull{it.id==id}?.let{names.add(placeName(it))}};q.isBlank()||names.any{it.contains(q,true)}||j.optString("service").contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));rows.forEach{r->val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard(a+" → "+b,r.time?:("No time · "+r.id)){if(correction)editRoute(r,backAction={routeListForCorrection()})else routeDetail(r)})}}
+ private fun editRoute(old:RouteRow?,copy:Boolean=false,reverse:Boolean=false,prefill:List<JSONObject>?=null,reviewRequest:Pair<String,JSONObject>?=null,prefillService:String?=null,backAction:(()->Unit)?=null){screen(if(old==null)"Add Route" else "Correction Route",true,"",backAction);task{prepareData();val places=dao.allPlaces();if(places.size<2)throw IllegalStateException("Add at least two bus stops first.");val oldJson=old?.let{JSONObject(it.payload)};val drafts=mutableListOf<JSONObject>();if(prefill!=null){drafts.addAll(prefill)}else if(oldJson!=null){val ids=mutableListOf<String>();ids.add(if(reverse)oldJson.optString("to") else oldJson.optString("from"));val arr=oldJson.optJSONArray("stops")?:JSONArray();for(i in 0 until arr.length()){ids.add(arr.optJSONObject(i)?.optString("place")?:arr.optString(i))};ids.add(if(reverse)oldJson.optString("from") else oldJson.optString("to"));if(reverse)ids.reverse();ids.forEachIndexed{idx,id->val p=places.firstOrNull{it.id==id};val tm=if(copy||reverse)"" else when(idx){0->oldJson.optString("time").takeUnless{it=="null"}.orEmpty();ids.lastIndex->oldJson.optString("arrive").takeUnless{it=="null"}.orEmpty();else->arr.optJSONObject(idx-1)?.optString("time")?.takeUnless{it=="null"}.orEmpty()};drafts.add(JSONObject().put("place_id",id).put("name",p?.let{placeName(it)}?:id).put("time",tm))}}else{drafts.add(newStopDraft());drafts.add(newStopDraft())}
  val service=input("Service / bus name (optional)",prefillService ?: (if(copy)"" else reviewRequest?.second?.optString("service_name")?.takeIf{it.isNotBlank()}?:oldJson?.optString("service")?:""));val box=LinearLayout(this).apply{orientation=1};add(text("Add times where known. At least one stop must have a time.",13));add(box)
  fun renderRows(){
   box.removeAllViews()
@@ -418,7 +416,7 @@ class MainActivity:ComponentActivity() {
   }
   val addEnd=button("＋ Add Stop at End"){drafts.add(newStopDraft());renderRows()};addEnd.background=actionStyle;box.addView(addEnd,LinearLayout.LayoutParams(-1,dp(44)).apply{topMargin=dp(10)})
  }
- renderRows();add(text("Service / Bus Name",13,true));add(service);add(button("Preview Route  →"){if(drafts.size<2||drafts.any{it.optString("name").isBlank()}||drafts.none{it.optString("time").matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))}){toast("Enter all stops and at least one valid time");return@button};screen("Route Preview",true,"Preview the complete route before publishing.")
+ renderRows();add(text("Service / Bus Name",13,true));add(service);add(button("Preview Route  →"){if(drafts.size<2||drafts.any{it.optString("name").isBlank()}||drafts.none{it.optString("time").matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))}){toast("Enter all stops and at least one valid time");return@button};screen("Route Preview",true,"Preview the complete route before publishing."){editRoute(old,copy,reverse,drafts.map{JSONObject(it.toString())},reviewRequest,service.text.toString(),backAction)}
  val previewCard=LinearLayout(this).apply{orientation=1;setPadding(dp(16),dp(14),dp(16),dp(14));background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(0xff0c2038.toInt(),0xff153456.toInt(),0xff255589.toInt())).apply{cornerRadius=dp(16).toFloat()}}
  previewCard.addView(TextView(this).apply{text=drafts.first().optString("name")+" → "+drafts.last().optString("name");textSize=19f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(Color.WHITE)})
  if(service.text.isNotBlank())previewCard.addView(TextView(this).apply{text=service.text.toString();textSize=14f;setTextColor(0xffdce9f8.toInt())})
@@ -430,7 +428,7 @@ class MainActivity:ComponentActivity() {
   line.addView(text(d.optString("time").ifBlank{"—"},12,true).apply{setTextColor(color)})
   add(line)
  }
- add(toolbarAction("‹  Back to Edit"){editRoute(old,copy,reverse,drafts.map{JSONObject(it.toString())},reviewRequest,service.text.toString())})
+ add(toolbarAction("‹  Back to Edit"){editRoute(old,copy,reverse,drafts.map{JSONObject(it.toString())},reviewRequest,service.text.toString(),backAction)})
  val stableRouteId=old?.id?.takeIf{!copy&&!reverse}?:("r_"+java.util.UUID.randomUUID().toString().replace("-",""))
  add(button("Publish Route  ✓"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest,stableRouteId)})})
  }}
@@ -540,19 +538,19 @@ class MainActivity:ComponentActivity() {
     if(drafts.size<2&&to.isNotBlank())addDraft(item.optString("to_id"),to,"")
    }
    if(drafts.size<2)throw IllegalStateException("This request does not contain enough route details to open the editor.")
-   editRoute(old,prefill=drafts,reviewRequest=table to item)
+   editRoute(old,prefill=drafts,reviewRequest=table to item,backAction={reviews()})
   }
  }
  private fun placeList(){screen("Bus Stop List");val q=input("Search stops");add(q);task{prepareData();showPlaces("")};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{showPlaces(s.toString())}};override fun afterTextChanged(e:android.text.Editable?){}})}
- private suspend fun showPlaces(q:String){val rows=dao.allPlaces().filter{it.id.contains(q,true)||it.names.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"bus stops"));if(rows.isEmpty())add(text("No matching bus stops",14));rows.forEach{p->val names=JSONObject(p.names);val meta=listOf(names.optString("hi"),names.optString("pa"),"ID: ${p.id}").filter{it.isNotBlank()}.joinToString("  ·  ");add(panelCard(placeName(p),meta){screen(placeName(p));add(text("Bus stop details",13,true));add(text("English: "+names.optString("en").ifBlank{"—"}));add(text("Hindi: "+names.optString("hi").ifBlank{"—"}));add(text("Punjabi: "+names.optString("pa").ifBlank{"—"}));add(text("Place ID: "+p.id,12));add(button("Correction / Edit Stop"){editPlace(p)});add(button("Delete this stop",false){task{val used=dao.allRoutes().filter{r->val j=JSONObject(r.payload);j.optString("from")==p.id||j.optString("to")==p.id||(j.optJSONArray("stops")?.let{a->(0 until a.length()).any{a.optJSONObject(it)?.optString("place")==p.id}}?:false)};if(used.isNotEmpty())toast("Cannot delete this stop: "+used.joinToString{it.id})else confirm("Move this stop to Recycle Bin?"){task{val payload=JSONObject(p.payload);val res=publishChange("place",p.id,"delete",payload);toast("Published successfully · revision "+res.optLong("revision"));prepareData();navigateToFreshParent{placeList()}}}})})}}
- private fun editPlace(old:PlaceRow?,prefillKind:Int?=null,prefillEn:String?=null,prefillHi:String?=null,prefillPa:String?=null){
-  screen(if(old==null)"Add Bus Stop" else "Correction Bus Stop")
+ private suspend fun showPlaces(q:String){val rows=dao.allPlaces().filter{it.id.contains(q,true)||it.names.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"bus stops"));if(rows.isEmpty())add(text("No matching bus stops",14));rows.forEach{p->val names=JSONObject(p.names);val meta=listOf(names.optString("hi"),names.optString("pa"),"ID: ${p.id}").filter{it.isNotBlank()}.joinToString("  ·  ");add(panelCard(placeName(p),meta){screen(placeName(p),true,""){placeList()};add(text("Bus stop details",13,true));add(text("English: "+names.optString("en").ifBlank{"—"}));add(text("Hindi: "+names.optString("hi").ifBlank{"—"}));add(text("Punjabi: "+names.optString("pa").ifBlank{"—"}));add(text("Place ID: "+p.id,12));add(button("Correction / Edit Stop"){editPlace(p,backAction={placeList()})});add(button("Delete this stop",false){task{val used=dao.allRoutes().filter{r->val j=JSONObject(r.payload);j.optString("from")==p.id||j.optString("to")==p.id||(j.optJSONArray("stops")?.let{a->(0 until a.length()).any{a.optJSONObject(it)?.optString("place")==p.id}}?:false)};if(used.isNotEmpty())toast("Cannot delete this stop: "+used.joinToString{it.id})else confirm("Move this stop to Recycle Bin?"){task{val payload=JSONObject(p.payload);val res=publishChange("place",p.id,"delete",payload);toast("Published successfully · revision "+res.optLong("revision"));prepareData();placeList()}}})})}}
+ private fun editPlace(old:PlaceRow?,prefillKind:Int?=null,prefillEn:String?=null,prefillHi:String?=null,prefillPa:String?=null,backAction:(()->Unit)?=null){
+  screen(if(old==null)"Add Bus Stop" else "Correction Bus Stop",true,"",backAction)
   add(text("Select place type",13,true));val kind=Spinner(this);val labels=listOf("Bus Stand","Village","City","Other Place")
   kind.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,labels)
   kind.setSelection(prefillKind ?: when(old?.kind){"stand"->0;"village"->1;"city"->2;"other"->3;else->3});add(kind)
   val n=JSONObject(old?.names?:"{}");val en=input("English name",prefillEn ?: n.optString("en"));val hi=input("Hindi name",prefillHi ?: n.optString("hi"));val pa=input("Punjabi name",prefillPa ?: n.optString("pa"))
   add(text("English",13,true));add(en);add(text("Hindi",13,true));add(hi);add(text("Punjabi",13,true));add(pa)
-  add(button("Preview"){if(en.text.isBlank()&&hi.text.isBlank()&&pa.text.isBlank()){toast("Enter at least one name");return@button};screen("Bus Stop Preview");add(text(labels[kind.selectedItemPosition],12,true));add(text("English: "+en.text.toString().ifBlank{"—"},16,true));add(text("Hindi: "+hi.text.toString().ifBlank{"—"}));add(text("Punjabi: "+pa.text.toString().ifBlank{"—"}));add(button("Back to Edit"){editPlace(old,kind.selectedItemPosition,en.text.toString(),hi.text.toString(),pa.text.toString())});add(button("Publish"){savePlace(old,kind.selectedItemPosition,en.text.toString(),hi.text.toString(),pa.text.toString())})})
+  add(button("Preview"){if(en.text.isBlank()&&hi.text.isBlank()&&pa.text.isBlank()){toast("Enter at least one name");return@button};screen("Bus Stop Preview",true,""){editPlace(old,kind.selectedItemPosition,en.text.toString(),hi.text.toString(),pa.text.toString(),backAction)};add(text(labels[kind.selectedItemPosition],12,true));add(text("English: "+en.text.toString().ifBlank{"—"},16,true));add(text("Hindi: "+hi.text.toString().ifBlank{"—"}));add(text("Punjabi: "+pa.text.toString().ifBlank{"—"}));add(button("Back to Edit"){editPlace(old,kind.selectedItemPosition,en.text.toString(),hi.text.toString(),pa.text.toString(),backAction)});add(button("Publish"){savePlace(old,kind.selectedItemPosition,en.text.toString(),hi.text.toString(),pa.text.toString())})})
  }
  private fun savePlace(old:PlaceRow?,kindIndex:Int,en:String,hi:String,pa:String){task{
   if(en.isBlank()&&hi.isBlank()&&pa.isBlank())throw IllegalStateException("At least one name is required")
@@ -843,7 +841,7 @@ class MainActivity:ComponentActivity() {
  private fun setStatus(table:String,id:String,status:String){task{api.publish(JSONObject().put("action","review-status").put("table",table).put("id",id).put("status",status));reviews()}}
  private fun editReview(table:String,x:JSONObject){
   val keys=when(table){"route_submissions"->listOf("from_text","to_text","start_time","service_name","phone","route_text");"correction_submissions"->listOf("request_type","route_id","stop_id","before_stop_id","after_stop_id","missing_place_name","missing_time","corrected_time","notes","phone","change_summary");else->listOf("operator_name","service_name","bus_type","bus_types","seat_type","sleeper_count","seater_count","from_text","to_text","location","phone","whatsapp","details")}
-  screen("Review / Edit Bus Request",true,"Update the submitted bus information, then save it to the shared review queue.")
+  screen("Review / Edit Bus Request",true,"Update the submitted bus information, then save it to the shared review queue."){reviews()}
   val fields=JSONObject()
   val inputs=keys.associateWith{key->
    val value=if(key=="bus_types")x.optJSONArray("bus_types")?.let{a->(0 until a.length()).joinToString(", "){a.optString(it)}}?:x.optString("bus_type") else x.optString(key)
