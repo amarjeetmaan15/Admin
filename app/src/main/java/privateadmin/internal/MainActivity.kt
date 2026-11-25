@@ -693,7 +693,7 @@ class MainActivity:ComponentActivity() {
   val serverRevision=state.optJSONObject("state")?.optLong("revision")?:0L
   val pending=(0 until errors.length()).count{errors.optJSONObject(it)?.optString("status")=="pending"}
   val failed=(0 until devices.length()).count{!devices.optJSONObject(it)?.optString("last_error").isNullOrBlank()}
-  list.addView(text("Devices: $devices.length()  ·  Pending errors: $pending  ·  Devices with errors: $failed  ·  Server revision: $serverRevision",12,true))
+  list.addView(text("Devices: ${devices.length()}  ·  Pending errors: $pending  ·  Devices with errors: $failed  ·  Server revision: $serverRevision",12,true))
   list.addView(text("DEVICES",12,true).apply{setPadding(0,dp(8),0,dp(3))})
   if(devices.length()==0)list.addView(text("No device sync reports received yet.",12))
   for(i in 0 until devices.length()){
