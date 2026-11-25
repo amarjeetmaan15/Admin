@@ -77,6 +77,27 @@ class SupabaseApi {
  }
  suspend fun loadAdSettings():JSONObject {ensureToken();val rows=JSONArray(request("/rest/v1/ad_settings?select=config&id=eq.1","GET"));return rows.optJSONObject(0)?.optJSONObject("config")?:JSONObject()}
  suspend fun saveAdSettings(config:JSONObject){ensureToken();request("/rest/v1/ad_settings?on_conflict=id","POST",JSONObject().put("id",1).put("config",config).put("updated_at",java.time.Instant.now().toString()).toString(),true,"resolution=merge-duplicates,return=minimal")}
+ suspend fun busOperators():JSONArray {
+  ensureToken()
+  return JSONArray(request("/rest/v1/bus_operators?select=id,operator_name,service_name,bus_types,location,phone,whatsapp,details,active&active=eq.true&order=service_name.asc&limit=500","GET"))
+ }
+ suspend fun addBusOperatorIfMissing(payload:JSONObject):Boolean {
+  ensureToken()
+  val rows=busOperators()
+  val service=payload.optString("service_name").trim()
+  val phone=payload.optString("phone").filter{it.isDigit()}
+  val location=payload.optString("location").trim()
+  val exists=(0 until rows.length()).any{index->
+   val row=rows.optJSONObject(index)?:return@any false
+   val rowService=row.optString("service_name").ifBlank{row.optString("operator_name")}.trim()
+   val rowPhone=row.optString("phone").filter{it.isDigit()}
+   val rowLocation=row.optString("location").trim()
+   rowService.equals(service,true)&&rowPhone==phone&&rowLocation.equals(location,true)
+  }
+  if(exists)return false
+  request("/rest/v1/bus_operators","POST",payload.toString(),true,"return=minimal")
+  return true
+ }
  suspend fun analyticsEvents():JSONArray {ensureToken();return JSONArray(request("/rest/v1/analytics_events?select=id,created_at,event_name,section,session_id,properties,app_version,platform&order=created_at.desc&limit=5000","GET"))}
 
 }
