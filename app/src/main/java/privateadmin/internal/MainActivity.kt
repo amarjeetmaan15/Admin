@@ -564,7 +564,7 @@ class MainActivity:ComponentActivity() {
    }
   }
  }
- private fun historyIdentity(row:JSONObject):String=listOf(row.optString("revision"),row.optString("entity_type"),row.optString("entity_id"),row.optString("operation"),row.optString("created_at"),row.optString("id")).joinToString("|")
+ private fun historyIdentity(row:JSONObject):String=listOf(row.optString("revision"),row.optString("entity_type"),row.optString("entity_id"),row.optString("operation"),row.optString("created_at"),row.optString("id"),row.optJSONObject("before")?.toString().orEmpty(),row.optJSONObject("payload")?.toString().orEmpty()).joinToString("|")
  private fun historyChanged(row:JSONObject):String{
   if(row.optString("operation")=="delete")return "Moved to Recycle Bin"
   val before=row.optJSONObject("before")?:return "New or first version in available history"
