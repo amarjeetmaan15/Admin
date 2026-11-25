@@ -57,10 +57,10 @@ class MainActivity:ComponentActivity() {
  private var currentBackAction:(()->Unit)?=null
  private fun findBody(v:View):LinearLayout?{if(v is LinearLayout && v.tag=="admin_page_body")return v;if(v is android.view.ViewGroup)for(i in 0 until v.childCount)findBody(v.getChildAt(i))?.let{return it};return null}
  private fun goBack(){val action=currentBackAction;if(action!=null){currentBackAction=null;action();return};AlertDialog.Builder(this).setMessage("Do you want to exit Bustime Operations?").setNegativeButton("Cancel",null).setPositiveButton("Exit"){_,_->finish()}.show()}
- private fun screen(title:String,back:Boolean=true,subtitle:String="",onBack:(()->Unit)?=null){
+ private fun screen(title:String,back:Boolean=true,subtitle:String="",onBack:(()->Unit)?=null,compact:Boolean=false){
   currentBackAction=if(back)(onBack?:{home()})else null
-  val root=LinearLayout(this).apply{orientation=1;setPadding(dp(24),dp(16),dp(24),dp(24));setBackgroundColor(Color.WHITE)}
-  root.addView(TextView(this).apply{text=title;textSize=24f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(0xff161b22.toInt());setPadding(0,0,0,dp(8))})
+  val root=LinearLayout(this).apply{orientation=1;setPadding(dp(if(compact)16 else 24),dp(if(compact)8 else 16),dp(if(compact)16 else 24),dp(24));setBackgroundColor(Color.WHITE)}
+  root.addView(TextView(this).apply{text=title;textSize=if(compact)18f else 24f;typeface=android.graphics.Typeface.DEFAULT_BOLD;setTextColor(0xff161b22.toInt());setPadding(0,0,0,dp(if(compact)2 else 8))})
   if(subtitle.isNotBlank())root.addView(TextView(this).apply{text=subtitle;textSize=14f;setTextColor(0xff535e6e.toInt());setPadding(0,0,0,dp(12))})
   if(back)root.addView(toolbarAction(tr("‹  Back","‹  वापस","‹  ਵਾਪਸ")){goBack()},LinearLayout.LayoutParams(dp(112),dp(42)).apply{bottomMargin=dp(12)})
   val scroll=ScrollView(this).apply{isFillViewport=true};body=LinearLayout(this).apply{orientation=1;tag="admin_page_body"};scroll.addView(body,android.widget.FrameLayout.LayoutParams(-1,-2));root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f));setContentView(root)
@@ -99,16 +99,25 @@ class MainActivity:ComponentActivity() {
  private fun toast(s:String){Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
  private fun login(){currentBackAction=null;screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
  private var adConfig=JSONObject()
- private fun home(selectedTab:String="existing"){currentBackAction=null;screen("Bustime Operations",false)
-  val language=Spinner(this);language.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("English","हिन्दी","ਪੰਜਾਬੀ"));language.setSelection(lang.ordinal);language.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener{override fun onNothingSelected(p:android.widget.AdapterView<*>?){};override fun onItemSelected(p:android.widget.AdapterView<*>?,v:View?,pos:Int,id:Long){lang=UiLanguage.values()[pos];getPreferences(0).edit().putString("lang",lang.name).apply()}};add(language)
+ private var currentHomeTab="existing"
+ private fun home(selectedTab:String="existing"){
+  currentHomeTab=selectedTab
+  currentBackAction=null
+  screen("Bustime Operations",false,compact=true)
   val tabs=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
   fun tab(label:String,key:String){
    val active=selectedTab==key
-   val b=Button(this).apply{text=label;isAllCaps=false;textSize=12f;minHeight=dp(46);setPadding(dp(4),dp(6),dp(4),dp(6));setTextColor(if(active)Color.WHITE else 0xff245b8f.toInt());background=GradientDrawable().apply{setColor(if(active)0xff245b8f.toInt() else 0xffeaf2fb.toInt());cornerRadius=dp(10).toFloat();if(!active)setStroke(dp(1),0xffc8d9ec.toInt())};setOnClickListener{home(key)}}
-   tabs.addView(b,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(3),dp(4),dp(3),dp(10))})
+   val b=Button(this).apply{
+    text=label;isAllCaps=false;textSize=12f;minHeight=dp(38);minimumHeight=dp(38);setPadding(dp(2),dp(3),dp(2),dp(3))
+    setTextColor(if(active)Color.WHITE else 0xff245b8f.toInt())
+    background=GradientDrawable().apply{setColor(if(active)0xff245b8f.toInt() else 0xffeaf2fb.toInt());cornerRadius=dp(8).toFloat();if(!active)setStroke(dp(1),0xffc8d9ec.toInt())}
+    setOnClickListener{home(key)}
+   }
+   tabs.addView(b,LinearLayout.LayoutParams(0,dp(40),1f).apply{setMargins(dp(2),dp(2),dp(2),dp(3))})
   }
-  tab("Existing Data","existing");tab("Advertisement","advertisement");tab("Analytics & Stats","analytics")
+  tab("Operations","existing");tab("Advertisement","advertisement");tab("Analytics","analytics")
   add(tabs)
+  add(homeStatusBar())
   if(selectedTab=="existing"){
    val menu=GridLayout(this).apply{columnCount=2;useDefaultMargins=false}
    val tiles=listOf(
@@ -122,7 +131,7 @@ class MainActivity:ComponentActivity() {
     Triple(tr("Correction Route","रूट सुधारें","ਰੂਟ ਸੋਧੋ"),0xff277b9b.toInt(),{correctionRouteList()}),
     Triple(tr("Add Bus Stop","बस स्टॉप जोड़ें","ਬੱਸ ਸਟਾਪ ਜੋੜੋ"),0xff4b7c4a.toInt(),{editPlace(null)})
    )
-   tiles.forEachIndexed{index,item->val tile=homeTile(item.first,item.second,item.third);menu.addView(tile,GridLayout.LayoutParams().apply{width=0;height=dp(64);columnSpec=GridLayout.spec(index%2,1f);rowSpec=GridLayout.spec(index/2);setMargins(dp(4),dp(5),dp(4),dp(5))})}
+   tiles.forEachIndexed{index,item->val tile=homeTile(item.first,item.second,item.third);menu.addView(tile,GridLayout.LayoutParams().apply{width=0;height=dp(64);columnSpec=GridLayout.spec(index%2,1f);rowSpec=GridLayout.spec(index/2);setMargins(dp(4),dp(4),dp(4),dp(4))})}
    add(menu)
    task{prepareData()}
   }else if(selectedTab=="advertisement"){
@@ -133,6 +142,74 @@ class MainActivity:ComponentActivity() {
   add(button(tr("Check for Update","अपडेट चेक करें","ਅੱਪਡੇਟ ਚੈੱਕ ਕਰੋ"),true){checkForUpdate()})
   add(button(tr("Sign out","साइन आउट","ਸਾਈਨ ਆਉਟ"),false){api.session=null;getPreferences(0).edit().clear().apply();login()})
  }
+
+ private fun homeStatusBar():LinearLayout{
+  val bar=LinearLayout(this).apply{
+   orientation=0;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(9),dp(4),dp(7),dp(4))
+   background=GradientDrawable().apply{setColor(0xfff5f7fa.toInt());cornerRadius=dp(9).toFloat();setStroke(dp(1),0xffe1e7ef.toInt())}
+  }
+  bar.addView(text("Status",12,true),LinearLayout.LayoutParams(-2,-2).apply{marginEnd=dp(7)})
+  val alert=text("",11,true).apply{
+   visibility=View.GONE;maxLines=2;setTextColor(0xffb42318.toInt());gravity=Gravity.CENTER_VERTICAL
+   setPadding(dp(7),dp(4),dp(7),dp(4))
+   background=GradientDrawable().apply{setColor(0xffffe7e5.toInt());cornerRadius=dp(7).toFloat();setStroke(dp(1),0xfff1aaa4.toInt())}
+  }
+  bar.addView(alert,LinearLayout.LayoutParams(0,-2,1f).apply{marginEnd=dp(6)})
+  val reload=toolbarAction("↻ Reload Data"){reloadHomeData()}.apply{ textSize=11f;minHeight=dp(34);minimumHeight=dp(34);setPadding(dp(7),dp(3),dp(7),dp(3)) }
+  bar.addView(reload,LinearLayout.LayoutParams(-2,dp(36)))
+  loadHomeStatus(alert)
+  return bar
+ }
+
+ private fun loadHomeStatus(alert:TextView){
+  lifecycleScope.launch{
+   try{
+    val result=api.history(JSONObject().put("action","sync-monitor").put("status","pending"))
+    val devices=result.optJSONArray("devices")?:JSONArray()
+    val errors=result.optJSONArray("errors")?:JSONArray()
+    val pending=(0 until errors.length()).count{errors.optJSONObject(it)?.optString("status")=="pending"}
+    val failed=(0 until devices.length()).count{!devices.optJSONObject(it)?.optString("last_error").isNullOrBlank()}
+    if(pending==0&&failed==0){
+     alert.clearAnimation();alert.visibility=View.GONE
+    }else{
+     alert.text="⚠ Pending errors: $pending  ·  Devices with errors: $failed"
+     alert.visibility=View.VISIBLE
+     alert.startAnimation(android.view.animation.AlphaAnimation(0.25f,1f).apply{duration=650;repeatMode=android.view.animation.Animation.REVERSE;repeatCount=android.view.animation.Animation.INFINITE})
+    }
+   }catch(e:Exception){
+    alert.text="Status unavailable"
+    alert.visibility=View.VISIBLE
+   }
+  }
+ }
+
+ private fun reloadHomeData(){
+  task{
+   toast("Reloading full Master Data…")
+   val revision=reloadFullData()
+   toast("Full data reloaded · revision $revision")
+   home(currentHomeTab)
+  }
+ }
+
+ private suspend fun reloadFullData():Long=dataInitMutex.withLock{
+  val snapshot=api.snapshot()
+  val placesJson=snapshot.optJSONArray("places")?:throw IllegalStateException("Master Data snapshot did not include places.")
+  val routesJson=snapshot.optJSONArray("routes")?:throw IllegalStateException("Master Data snapshot did not include routes.")
+  val snapshotRevision=snapshot.optLong("snapshotRevision",0L)
+  if(placesJson.length()==0||routesJson.length()==0||snapshotRevision<=0L)throw IllegalStateException("Supabase Master Data returned an incomplete snapshot. Local data was kept unchanged.")
+  val places=(0 until placesJson.length()).map{index->
+   val p=placesJson.getJSONObject(index)
+   PlaceRow(p.getString("id"),p.optString("kind","place"),p.optJSONObject("name")?.toString()?:"{}",p.optString("city").ifBlank{null},p.optString("district").ifBlank{null},p.toString())
+  }
+  val routes=(0 until routesJson.length()).map{index->
+   val r=routesJson.getJSONObject(index)
+   RouteRow(r.getString("id"),r.toString(),r.optString("from"),r.optString("to"),r.optString("time").ifBlank{null})
+  }
+  dao.replaceSnapshot(places,routes,SyncMeta(revision=snapshotRevision))
+  sync.sync()
+ }.also{currentMdmRevision=it}
+
 
  private fun checkForUpdate(){
   task {
