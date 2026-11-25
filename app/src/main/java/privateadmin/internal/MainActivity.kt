@@ -170,7 +170,7 @@ class MainActivity:ComponentActivity() {
     val devices=result.optJSONArray("devices")?:JSONArray()
     val errors=result.optJSONArray("errors")?:JSONArray()
     val pending=(0 until errors.length()).count{errors.optJSONObject(it)?.optString("status")=="pending"}
-    val failed=(0 until devices.length()).count{!devices.optJSONObject(it)?.optString("last_error").isNullOrBlank()}
+    val failed=(0 until devices.length()).count{index->val raw=devices.optJSONObject(index)?.opt("last_error");raw!=null&&raw!=JSONObject.NULL&&raw.toString().trim().isNotEmpty()}
     if(pending==0&&failed==0){
      alert.clearAnimation();alert.visibility=View.GONE
     }else{
