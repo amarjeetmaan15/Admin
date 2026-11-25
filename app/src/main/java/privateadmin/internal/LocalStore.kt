@@ -24,6 +24,14 @@ data class SyncMeta(@PrimaryKey val id:Int=1, val revision:Long=0)
     @Query("DELETE FROM routes WHERE id=:id") suspend fun deleteRoute(id:String)
     @Query("DELETE FROM routes") suspend fun clearRoutes()
     @Query("DELETE FROM places") suspend fun clearPlaces()
+    @Transaction
+    suspend fun replaceSnapshot(places:List<PlaceRow>,routes:List<RouteRow>,meta:SyncMeta){
+        clearRoutes()
+        clearPlaces()
+        places.forEach{putPlace(it)}
+        routes.forEach{putRoute(it)}
+        putMeta(meta)
+    }
 }
 @Database(entities=[PlaceRow::class,RouteRow::class,SyncMeta::class],version=1,exportSchema=false)
 abstract class LocalDb:RoomDatabase() {
