@@ -419,19 +419,48 @@ class MainActivity:ComponentActivity() {
     val places=dao.allPlaces()
     val re=Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
     if(drafts.size<2)throw IllegalStateException("At least two stops are required.")
-    val resolved=drafts.map{d->resolvePlaceByName(d.optString("name"),places)?:places.firstOrNull{it.id==d.optString("place_id")}}
-    val invalid=resolved.indexOfFirst{it==null}
-    if(invalid>=0)throw IllegalStateException("Stop ${invalid+1}: select a saved bus stop from suggestions, or add it to Bus Stop List first.")
-    val validPlaces=resolved.filterNotNull()
-    val ids=validPlaces.map{it.id}
+    if(drafts.any{it.optString("name").isBlank()})throw IllegalStateException("Enter a name for every stop.")
+    val createdPlaces=linkedMapOf<String,JSONObject>()
+    val resolved=mutableListOf<PlaceRow>()
+    drafts.forEachIndexed{index,d->
+     val stopName=d.optString("name").trim()
+     val existing=resolvePlaceByName(stopName,places)
+      ?:places.firstOrNull{it.id==d.optString("place_id")}
+     val place=existing?:run{
+      val normalized=normalizePlaceText(stopName)
+      val duplicate=resolved.firstOrNull{p->
+       val names=JSONObject(p.names);listOf(names.optString("en"),names.optString("hi"),names.optString("pa"),p.id).any{it.isNotBlank()&&normalizePlaceText(it)==normalized}
+      }
+      if(duplicate!=null)duplicate else{
+       val retryId=d.optString("place_id").takeIf{it.isNotBlank()&&it!="null"}
+       val id=retryId?:("place_"+stopName.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]+"),"_").trim('_').take(65).ifBlank{"place"}+"_"+java.util.UUID.randomUUID().toString().replace("-","").take(8))
+       val language=when{
+        stopName.any{Character.UnicodeScript.of(it.code)==Character.UnicodeScript.DEVANAGARI}->"hi"
+        stopName.any{Character.UnicodeScript.of(it.code)==Character.UnicodeScript.GURMUKHI}->"pa"
+        else->"en"
+       }
+       val names=JSONObject().put(language,stopName)
+       val placePayload=JSONObject().put("id",id).put("kind","place").put("name",names).put("aliases",JSONArray())
+       createdPlaces[id]=placePayload
+       d.put("place_id",id)
+       PlaceRow(id,"place",names.toString(),payload=placePayload.toString())
+      }
+     }
+     d.put("place_id",place.id)
+     resolved.add(place)
+    }
+    val ids=resolved.map{it.id}
     if(ids.distinct().size<2)throw IllegalStateException("A route must contain at least two different bus stops.")
     if(drafts.none{re.matches(it.optString("time"))})throw IllegalStateException("At least one valid time is required.")
     val payload=JSONObject(old?.payload?:"{}").put("id",stableRouteId).put("from",ids.first()).put("to",ids.last())
      .put("time",drafts.first().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL)
      .put("arrive",drafts.last().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL)
      .put("service",service)
-     .put("stops",JSONArray().apply{validPlaces.drop(1).dropLast(1).forEachIndexed{idx,p->put(JSONObject().put("place",p.id).put("time",drafts[idx+1].optString("time").takeIf{v->re.matches(v)}?:JSONObject.NULL))}})
-    val res=api.publish(JSONObject().put("action","publish").put("changes",JSONArray().put(JSONObject().put("entity_type","route").put("entity_id",stableRouteId).put("operation","upsert").put("payload",payload))))
+     .put("stops",JSONArray().apply{resolved.drop(1).dropLast(1).forEachIndexed{idx,p->put(JSONObject().put("place",p.id).put("time",drafts[idx+1].optString("time").takeIf{v->re.matches(v)}?:JSONObject.NULL))}})
+    val changes=JSONArray()
+    createdPlaces.forEach{(id,placePayload)->changes.put(JSONObject().put("entity_type","place").put("entity_id",id).put("operation","upsert").put("payload",placePayload))}
+    changes.put(JSONObject().put("entity_type","route").put("entity_id",stableRouteId).put("operation","upsert").put("payload",payload))
+    val res=api.publish(JSONObject().put("action","publish").put("changes",changes))
     var approvalWarning=""
     if(reviewRequest!=null){
      try{api.publish(JSONObject().put("action","review-status").put("table",reviewRequest.first).put("id",reviewRequest.second.optString("id")).put("status","approved"))}
