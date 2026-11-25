@@ -435,7 +435,7 @@ class MainActivity:ComponentActivity() {
     }
     toast((if(reviewRequest!=null)"Route published" else "Published")+" · revision "+res.optLong("revision")+approvalWarning)
     try{sync.sync()}catch(_:Exception){}
-    if(reviewRequest!=null)reviews()else home()
+    if(reviewRequest!=null&&approvalWarning.isBlank())reviews()else if(reviewRequest==null)home()
    }finally{routePublishInFlight=false}
   }
  }
