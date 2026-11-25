@@ -292,8 +292,20 @@ class MainActivity:ComponentActivity() {
   }
  }
  private fun placeName(p:PlaceRow):String{val n=JSONObject(p.names);return n.optString("en").ifBlank{n.optString("hi").ifBlank{n.optString("pa").ifBlank{p.id}}}}
+ private fun normalizePlaceText(value:String)=value.trim().lowercase(java.util.Locale.ROOT).replace(Regex("\\s+")," ")
+ private fun resolvePlaceByName(value:String,places:List<PlaceRow>):PlaceRow?{
+  val wanted=normalizePlaceText(value)
+  if(wanted.isBlank())return null
+  return places.firstOrNull{p->
+   val names=JSONObject(p.names);val payload=JSONObject(p.payload)
+   val candidates=mutableListOf(p.id,names.optString("en"),names.optString("hi"),names.optString("pa"),placeName(p))
+   val aliases=payload.optJSONArray("aliases")
+   if(aliases!=null)for(i in 0 until aliases.length())candidates.add(aliases.optString(i))
+   candidates.any{it.isNotBlank()&&normalizePlaceText(it)==wanted}
+  }
+ }
  private fun routeList(){screen(tr("Route List","रूट सूची","ਰੂਟ ਸੂਚੀ"));val q=input("Search routes");add(q);task{sync.sync();showRoutes("")};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{showRoutes(s.toString())}};override fun afterTextChanged(e:android.text.Editable?){}})}
- private suspend fun showRoutes(q:String){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{it.fromId.contains(q,true)||it.toId.contains(q,true)||it.id.contains(q,true)||it.payload.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));if(rows.isEmpty())add(text("No matching routes",14));rows.forEach{r->val j=JSONObject(r.payload);val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard("$a  →  $b",listOf(r.time?.let{"Time: $it"},j.optString("service").takeIf{it.isNotBlank()}).filterNotNull().joinToString("  ·  ")){routeDetail(r)})}}
+ private suspend fun showRoutes(q:String){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{r->val j=JSONObject(r.payload);val names=mutableListOf<String>(r.id,r.fromId,r.toId,placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}")),placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}")));val a=j.optJSONArray("stops")?:JSONArray();for(i in 0 until a.length()){val id=a.optJSONObject(i)?.optString("place")?:a.optString(i);names.add(id);places.firstOrNull{it.id==id}?.let{names.add(placeName(it))}};q.isBlank()||names.any{it.contains(q,true)}||j.optString("service").contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));if(rows.isEmpty())add(text("No matching routes",14));rows.forEach{r->val j=JSONObject(r.payload);val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard("$a  →  $b",listOf(r.time?.let{"Time: $it"},j.optString("service").takeIf{it.isNotBlank()}).filterNotNull().joinToString("  ·  ")){routeDetail(r)})}}
  private fun routeDetail(r:RouteRow){
   task{
    val j=JSONObject(r.payload);val places=dao.allPlaces()
@@ -335,7 +347,7 @@ class MainActivity:ComponentActivity() {
 
  private fun correctionRouteList(){routeListForCorrection()}
  private fun routeListForCorrection(){screen("Correction Route");val q=input("Search routes");add(q);task{sync.sync();renderRouteRows(q.text.toString(),true)};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{renderRouteRows(s.toString(),true)}};override fun afterTextChanged(e:android.text.Editable?){}})}
- private suspend fun renderRouteRows(q:String,correction:Boolean){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{it.fromId.contains(q,true)||it.toId.contains(q,true)||it.id.contains(q,true)||it.payload.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));rows.forEach{r->val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard(a+" → "+b,r.time?:("No time · "+r.id)){if(correction)editRoute(r)else routeDetail(r)})}}
+ private suspend fun renderRouteRows(q:String,correction:Boolean){val all=dao.allRoutes();val places=dao.allPlaces();val rows=all.filter{r->val j=JSONObject(r.payload);val names=mutableListOf<String>(r.id,r.fromId,r.toId,placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}")),placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}")));val a=j.optJSONArray("stops")?:JSONArray();for(i in 0 until a.length()){val id=a.optJSONObject(i)?.optString("place")?:a.optString(i);names.add(id);places.firstOrNull{it.id==id}?.let{names.add(placeName(it))}};q.isBlank()||names.any{it.contains(q,true)}||j.optString("service").contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"routes"));rows.forEach{r->val a=placeName(places.firstOrNull{it.id==r.fromId}?:PlaceRow(r.fromId,"place","{}"));val b=placeName(places.firstOrNull{it.id==r.toId}?:PlaceRow(r.toId,"place","{}"));add(panelCard(a+" → "+b,r.time?:("No time · "+r.id)){if(correction)editRoute(r)else routeDetail(r)})}}
  private fun editRoute(old:RouteRow?,copy:Boolean=false,reverse:Boolean=false,prefill:List<JSONObject>?=null,reviewRequest:Pair<String,JSONObject>?=null,prefillService:String?=null){screen(if(old==null)"Add Route" else "Correction Route");task{sync.sync();val places=dao.allPlaces();if(places.size<2)throw IllegalStateException("Add at least two bus stops first.");val oldJson=old?.let{JSONObject(it.payload)};val drafts=mutableListOf<JSONObject>();if(prefill!=null){drafts.addAll(prefill)}else if(oldJson!=null){val ids=mutableListOf<String>();ids.add(if(reverse)oldJson.optString("to") else oldJson.optString("from"));val arr=oldJson.optJSONArray("stops")?:JSONArray();for(i in 0 until arr.length()){ids.add(arr.optJSONObject(i)?.optString("place")?:arr.optString(i))};ids.add(if(reverse)oldJson.optString("from") else oldJson.optString("to"));if(reverse)ids.reverse();ids.forEachIndexed{idx,id->val p=places.firstOrNull{it.id==id};val tm=if(copy||reverse)"" else when(idx){0->oldJson.optString("time").takeUnless{it=="null"}.orEmpty();ids.lastIndex->oldJson.optString("arrive").takeUnless{it=="null"}.orEmpty();else->arr.optJSONObject(idx-1)?.optString("time")?.takeUnless{it=="null"}.orEmpty()};drafts.add(JSONObject().put("place_id",id).put("name",p?.let{placeName(it)}?:id).put("time",tm))}}else{drafts.add(newStopDraft());drafts.add(newStopDraft())}
  val service=input("Service / bus name (optional)",prefillService ?: (if(copy)"" else reviewRequest?.second?.optString("service_name")?.takeIf{it.isNotBlank()}?:oldJson?.optString("service")?:""));val box=LinearLayout(this).apply{orientation=1};add(text("Add times where known. At least one stop must have a time.",13));add(box)
  fun renderRows(){
@@ -391,10 +403,42 @@ class MainActivity:ComponentActivity() {
   add(line)
  }
  add(toolbarAction("‹  Back to Edit"){editRoute(old,copy,reverse,drafts.map{JSONObject(it.toString())},reviewRequest,service.text.toString())})
- add(button("Publish Route  ✓"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest)})})
+ val stableRouteId=old?.id?.takeIf{!copy&&!reverse}?:("r_"+java.util.UUID.randomUUID().toString().replace("-",""))
+ add(button("Publish Route  ✓"){publishDraftRoute(old,copy,reverse,drafts,service.text.toString(),reviewRequest,stableRouteId)})})
  }}
  private fun newStopDraft()=JSONObject().put("place_id",JSONObject.NULL).put("name","").put("time","")
- private fun publishDraftRoute(old:RouteRow?,copy:Boolean,reverse:Boolean,drafts:List<JSONObject>,service:String,reviewRequest:Pair<String,JSONObject>?=null){task{val places=dao.allPlaces();val ids=drafts.map{it.optString("place_id")};val re=Regex("^([01]\\d|2[0-3]):[0-5]\\d$");if(drafts.any{it.optString("name").isBlank()}||ids.any{it.isBlank()||it=="null"}||ids.distinct().size<2)throw IllegalStateException("Select at least two valid stops.");val mismatched=drafts.firstOrNull{d->val p=places.firstOrNull{it.id==d.optString("place_id")};p==null||placeName(p)!=d.optString("name")};if(mismatched!=null)throw IllegalStateException("Stop name and saved place ID do not match. Please select the stop again.");if(drafts.none{re.matches(it.optString("time"))})throw IllegalStateException("At least one valid time is required.");val id=old?.id?.takeIf{!copy&&!reverse}?:("r_"+System.currentTimeMillis());val payload=JSONObject(old?.payload?:"{}").put("id",id).put("from",ids.first()).put("to",ids.last()).put("time",drafts.first().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL).put("arrive",drafts.last().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL).put("service",service).put("stops",JSONArray().apply{drafts.drop(1).dropLast(1).forEach{put(JSONObject().put("place",it.optString("place_id")).put("time",it.optString("time").takeIf{v->re.matches(v)}?:JSONObject.NULL))}});val res=api.publish(JSONObject().put("action","publish").put("changes",JSONArray().put(JSONObject().put("entity_type","route").put("entity_id",id).put("operation","upsert").put("payload",payload))));if(reviewRequest!=null){api.publish(JSONObject().put("action","review-status").put("table",reviewRequest.first).put("id",reviewRequest.second.optString("id")).put("status","approved"))};toast(if(reviewRequest!=null)"Route published and request approved · revision "+res.optLong("revision") else "Published · revision "+res.optLong("revision"));sync.sync();if(reviewRequest!=null)reviews()else home()}}
+ private fun publishDraftRoute(old:RouteRow?,copy:Boolean,reverse:Boolean,drafts:List<JSONObject>,service:String,reviewRequest:Pair<String,JSONObject>?=null,stableRouteId:String){
+  if(routePublishInFlight)return
+  routePublishInFlight=true
+  task{
+   try{
+    val places=dao.allPlaces()
+    val re=Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+    if(drafts.size<2)throw IllegalStateException("At least two stops are required.")
+    val resolved=drafts.map{d->resolvePlaceByName(d.optString("name"),places)?:places.firstOrNull{it.id==d.optString("place_id")}}
+    val invalid=resolved.indexOfFirst{it==null}
+    if(invalid>=0)throw IllegalStateException("Stop ${invalid+1}: select a saved bus stop from suggestions, or add it to Bus Stop List first.")
+    val validPlaces=resolved.filterNotNull()
+    val ids=validPlaces.map{it.id}
+    if(ids.distinct().size<2)throw IllegalStateException("A route must contain at least two different bus stops.")
+    if(drafts.none{re.matches(it.optString("time"))})throw IllegalStateException("At least one valid time is required.")
+    val payload=JSONObject(old?.payload?:"{}").put("id",stableRouteId).put("from",ids.first()).put("to",ids.last())
+     .put("time",drafts.first().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL)
+     .put("arrive",drafts.last().optString("time").takeIf{re.matches(it)}?:JSONObject.NULL)
+     .put("service",service)
+     .put("stops",JSONArray().apply{validPlaces.drop(1).dropLast(1).forEachIndexed{idx,p->put(JSONObject().put("place",p.id).put("time",drafts[idx+1].optString("time").takeIf{v->re.matches(v)}?:JSONObject.NULL))}})
+    val res=api.publish(JSONObject().put("action","publish").put("changes",JSONArray().put(JSONObject().put("entity_type","route").put("entity_id",stableRouteId).put("operation","upsert").put("payload",payload))))
+    var approvalWarning=""
+    if(reviewRequest!=null){
+     try{api.publish(JSONObject().put("action","review-status").put("table",reviewRequest.first).put("id",reviewRequest.second.optString("id")).put("status","approved"))}
+     catch(e:Exception){approvalWarning=" Route is published, but request approval failed. Reopen Review Center; do not publish the route again."}
+    }
+    toast((if(reviewRequest!=null)"Route published" else "Published")+" · revision "+res.optLong("revision")+approvalWarning)
+    try{sync.sync()}catch(_:Exception){}
+    if(reviewRequest!=null)reviews()else home()
+   }finally{routePublishInFlight=false}
+  }
+ }
  private fun editReviewRoute(table:String,item:JSONObject){
   task{
    sync.sync()
@@ -456,7 +500,8 @@ class MainActivity:ComponentActivity() {
  private fun savePlace(old:PlaceRow?,kindIndex:Int,en:String,hi:String,pa:String){task{
   if(en.isBlank()&&hi.isBlank()&&pa.isBlank())throw IllegalStateException("At least one name is required")
   val source=en.ifBlank{hi.ifBlank{pa}};val slug=source.lowercase().replace(Regex("[^a-z0-9]+"),"_").trim('_').take(65)
-  val id=old?.id?:slug.ifBlank{"place_"+System.currentTimeMillis()}
+  val baseId=slug.ifBlank{"place"}
+  val id=old?.id?:(baseId+"_"+java.util.UUID.randomUUID().toString().replace("-","").take(8))
   val payload=JSONObject(old?.payload?:"{}");val names=payload.optJSONObject("name")?:JSONObject()
   if(en.isNotBlank())names.put("en",en);if(hi.isNotBlank())names.put("hi",hi);if(pa.isNotBlank())names.put("pa",pa)
   val kind=listOf("stand","village","city","other")[kindIndex]
@@ -470,6 +515,7 @@ class MainActivity:ComponentActivity() {
  private var historyStatus:TextView?=null
  private var historyLoadButton:Button?=null
  private var historyLoading=false
+ private var routePublishInFlight=false
  private fun history(reset:Boolean){
   if(reset){historyItems.clear();historyHasMore=false;historyState=null}
   screen("History",true,"Complete publishing activity · newest changes first")
@@ -495,10 +541,10 @@ class MainActivity:ComponentActivity() {
     if(before!=null&&before>0)req.put("before_revision",before)
     val result=api.history(req)
     val rows=result.optJSONArray("items")?:JSONArray()
-    val known=historyItems.map{it.optLong("revision")}.toHashSet()
+    val known=historyItems.map{historyIdentity(it)}.toHashSet()
     for(i in 0 until rows.length()){
      val row=rows.getJSONObject(i)
-     if(known.add(row.optLong("revision")))historyItems.add(row)
+     if(known.add(historyIdentity(row)))historyItems.add(row)
     }
     historyHasMore=result.optBoolean("has_more")
     historyState=result.optJSONObject("state")
@@ -514,6 +560,7 @@ class MainActivity:ComponentActivity() {
    }
   }
  }
+ private fun historyIdentity(row:JSONObject):String=listOf(row.optString("revision"),row.optString("entity_type"),row.optString("entity_id"),row.optString("operation"),row.optString("created_at"),row.optString("id")).joinToString("|")
  private fun historyChanged(row:JSONObject):String{
   if(row.optString("operation")=="delete")return "Moved to Recycle Bin"
   val before=row.optJSONObject("before")?:return "New or first version in available history"
