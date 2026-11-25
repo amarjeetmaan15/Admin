@@ -958,31 +958,91 @@ class MainActivity:ComponentActivity() {
  }
 
  private fun busDirectory(){
-  screen(tr("Bus Directory","बस डायरेक्टरी","ਬੱਸ ਡਾਇਰੈਕਟਰੀ"),true,tr("Active bus services listed in the main app","मुख्य ऐप में उपलब्ध सक्रिय बस सेवाएँ","ਮੁੱਖ ਐਪ ਵਿੱਚ ਮੌਜੂਦ ਸਰਗਰਮ ਬੱਸ ਸੇਵਾਵਾਂ"))
+  screen(tr("Bus Directory","बस डायरेक्टरी","ਬੱਸ ਡਾਇਰੈਕਟਰੀ"),true,tr("Manage published bus operators and add new bus services","बस ऑपरेटर देखें, जोड़ें और अपडेट करें","ਬੱਸ ਆਪਰੇਟਰ ਵੇਖੋ, ਜੋੜੋ ਅਤੇ ਅੱਪਡੇਟ ਕਰੋ"))
+  add(button("＋ Add Bus"){busOperatorForm(null)})
   add(button(tr("Refresh","रिफ्रेश","ਰੀਫ੍ਰੈਸ਼")){busDirectory()})
   task{
    val rows=api.busOperators()
-   add(countLabel(rows.length(),tr("active services","सक्रिय सेवाएँ","ਸਰਗਰਮ ਸੇਵਾਵਾਂ")))
-   if(rows.length()==0)add(text(tr("No active bus services in the directory.","डायरेक्टरी में कोई सक्रिय बस सेवा नहीं है।","ਡਾਇਰੈਕਟਰੀ ਵਿੱਚ ਕੋਈ ਸਰਗਰਮ ਬੱਸ ਸੇਵਾ ਨਹੀਂ ਹੈ।"),14))
+   add(countLabel(rows.length(),"operator listings"))
+   if(rows.length()==0)add(text("No bus operators found in the directory.",14))
    for(i in 0 until rows.length()){
     val x=rows.optJSONObject(i)?:continue
+    val id=x.optString("id")
     val name=x.optString("service_name").ifBlank{x.optString("operator_name")}.ifBlank{"Bus service"}
-    val types=x.optJSONArray("bus_types")?.let{a->(0 until a.length()).joinToString(", "){a.optString(it)}}.orEmpty()
+    val types=x.optJSONArray("bus_types")?.let{a->(0 until a.length()).joinToString(", "){a.optString(it)}}?:x.optString("bus_type")
+    val active=x.optBoolean("active",true)
     val card=LinearLayout(this).apply{
      orientation=1;setPadding(dp(14),dp(12),dp(14),dp(12))
      background=GradientDrawable().apply{setColor(Color.WHITE);cornerRadius=dp(14).toFloat();setStroke(dp(1),0xffe1e7ef.toInt())}
     }
     card.addView(text(name,16,true))
-    if(x.optString("location").isNotBlank())card.addView(text("Location: "+x.optString("location"),13))
+    card.addView(text(if(active)"Active listing" else "Hidden listing",11,true).apply{setTextColor(if(active)0xff16845f.toInt() else 0xffb36a35.toInt())})
+    if(x.optString("location").isNotBlank())card.addView(text("Operating location: "+x.optString("location"),13))
     if(types.isNotBlank())card.addView(text("Bus types: "+types,13))
-    if(x.optString("phone").isNotBlank())card.addView(text("Phone: "+x.optString("phone"),13))
+    if(x.optString("phone").isNotBlank())card.addView(text("Booking phone: "+x.optString("phone"),13))
     if(x.optString("whatsapp").isNotBlank())card.addView(text("WhatsApp: "+x.optString("whatsapp"),13))
-    if(x.optString("details").isNotBlank())card.addView(text(x.optString("details"),12))
-    add(card)
+    if(x.optString("details").isNotBlank())card.addView(text("Extra message: "+x.optString("details"),12))
+    val actions=LinearLayout(this).apply{orientation=0}
+    actions.addView(button("Edit"){busOperatorForm(x)},LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(5)})
+    actions.addView(button(if(active)"Hide" else "Publish"){task{api.setBusOperatorActive(id,!active);toast(if(active)"Operator hidden." else "Operator published.");busDirectory()}},LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(5)})
+    actions.addView(button("Delete",false){confirm("Delete this bus operator?"){task{api.deleteBusOperator(id);toast("Operator deleted.");busDirectory()}}},LinearLayout.LayoutParams(0,dp(44),1f))
+    card.addView(actions);add(card)
    }
   }
  }
 
+ private fun busOperatorForm(existing:JSONObject?){
+  val editing=existing!=null
+  val known=listOf("Ordinary","Seater","Sleeper","AC Bus","Non-AC Bus","Luxury Bus","Volvo Bus","Mini Bus")
+  val saved=existing?.optJSONArray("bus_types")?:JSONArray()
+  val savedTypes=(0 until saved.length()).map{saved.optString(it)}
+  val customTypes=savedTypes.filter{it !in known && it!="Other"}
+  val otherSelected=savedTypes.contains("Other")||customTypes.isNotEmpty()
+  screen(if(editing)"Edit Bus Operator" else "Add Bus",true,"Enter the bus service details. Required fields are marked *."){busDirectory()}
+  val name=adField("Bus service / company name *","Enter service or company name",existing?.optString("service_name").orEmpty().ifBlank{existing?.optString("operator_name").orEmpty()})
+  val location=adField("Operating location / service area *","Enter operating area",existing?.optString("location").orEmpty())
+  add(text("Bus types *",14,true))
+  val checks=linkedMapOf<String,CheckBox>()
+  (known+listOf("Other")).forEach{type->
+   val cb=CheckBox(this).apply{text=type;textSize=14f;isChecked=if(type=="Other")otherSelected else savedTypes.contains(type)}
+   checks[type]=cb;add(cb)
+  }
+  val other=adField("Other bus type (required only when Other is selected)","Enter custom type(s), comma separated",customTypes.joinToString(", "))
+  other.visibility=if(otherSelected)View.VISIBLE else View.GONE
+  checks["Other"]?.setOnCheckedChangeListener{_,checked->other.visibility=if(checked)View.VISIBLE else View.GONE}
+  val phone=adField("Booking phone *","10–13 digit phone number",existing?.optString("phone").orEmpty())
+  phone.inputType=3
+  val whatsapp=adField("WhatsApp number · optional","WhatsApp number",existing?.optString("whatsapp").orEmpty())
+  whatsapp.inputType=3
+  val details=adField("Extra message · optional","Additional information",existing?.optString("details").orEmpty())
+  details.minLines=3;details.maxLines=5
+  add(button(if(editing)"Save Changes" else "Add Bus",true){
+   val service=name.text.toString().trim()
+   val area=location.text.toString().trim()
+   val digits=phone.text.toString().filter{it.isDigit()}
+   if(service.isBlank()||area.isBlank()||digits.length !in 10..13){toast("Enter service name, operating location and a valid 10–13 digit phone.");return@button}
+   val selected=checks.filter{it.key!="Other"&&it.value.isChecked}.keys.toMutableList()
+   if(checks["Other"]?.isChecked==true){
+    val custom=other.text.toString().split(",").map{it.trim()}.filter{it.isNotBlank()}
+    if(custom.isEmpty()){toast("Enter the custom bus type selected under Other.");return@button}
+    selected.addAll(custom)
+   }
+   if(selected.isEmpty()){toast("Select at least one bus type.");return@button}
+   val payload=JSONObject()
+    .put("operator_name",service).put("service_name",service)
+    .put("bus_types",JSONArray(selected.distinct()))
+    .put("location",area).put("phone",phone.text.toString().trim())
+    .put("whatsapp",whatsapp.text.toString().trim().ifBlank{JSONObject.NULL})
+    .put("details",details.text.toString().trim().ifBlank{JSONObject.NULL})
+    .put("active",true)
+   task{
+    if(editing)api.updateBusOperator(existing!!.optString("id"),payload) else api.createBusOperator(payload)
+    toast(if(editing)"Operator changes saved." else "Bus operator added and published.")
+    busDirectory()
+   }
+  })
+  add(button("Cancel",false){busDirectory()})
+ }
  private fun approveBusRequest(x:JSONObject){
   task{
    val service=x.optString("service_name").ifBlank{x.optString("operator_name")}.trim()
