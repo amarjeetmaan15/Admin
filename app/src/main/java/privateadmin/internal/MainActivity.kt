@@ -166,6 +166,7 @@ class MainActivity:ComponentActivity() {
   lifecycleScope.launch{
    try{
     val result=api.history(JSONObject().put("action","sync-monitor").put("status","pending"))
+    if(!result.optBoolean("ok",true))throw IllegalStateException(result.optString("error","Sync status request failed."))
     val devices=result.optJSONArray("devices")?:JSONArray()
     val errors=result.optJSONArray("errors")?:JSONArray()
     val pending=(0 until errors.length()).count{errors.optJSONObject(it)?.optString("status")=="pending"}
@@ -1032,8 +1033,8 @@ class MainActivity:ComponentActivity() {
     .put("operator_name",service).put("service_name",service)
     .put("bus_types",JSONArray(selected.distinct()))
     .put("location",area).put("phone",phone.text.toString().trim())
-    .put("whatsapp",whatsapp.text.toString().trim().ifBlank{JSONObject.NULL})
-    .put("details",details.text.toString().trim().ifBlank{JSONObject.NULL})
+    .put("whatsapp",whatsapp.text.toString().trim().takeIf{it.isNotBlank()}?:JSONObject.NULL)
+    .put("details",details.text.toString().trim().takeIf{it.isNotBlank()}?:JSONObject.NULL)
     .put("active",true)
    task{
     if(editing)api.updateBusOperator(existing!!.optString("id"),payload) else api.createBusOperator(payload)
