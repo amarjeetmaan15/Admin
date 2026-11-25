@@ -35,10 +35,11 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ADMIN_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "::error::Permanent signing secrets are missing. Configure TESTING_KEYSTORE_BASE64, ADMIN_KEYSTORE_PASSWORD, ADMIN_KEY_ALIAS, and ADMIN_KEY_PASSWORD."
-            exit 1
+            echo "::warning::Permanent signing secrets are not configured. Building with the runner's temporary Android debug key. This APK is for testing only and cannot safely update an installation signed with another key."
+            exit 0
           fi
           echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/testing.jks"
+          keytool -list -keystore "$RUNNER_TEMP/testing.jks" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
           echo "TESTING_KEYSTORE_PATH=$RUNNER_TEMP/testing.jks" >> "$GITHUB_ENV"
           echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
