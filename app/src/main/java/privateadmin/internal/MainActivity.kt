@@ -94,7 +94,7 @@ class MainActivity:ComponentActivity() {
  }
  private fun input(h:String,v:String="")=EditText(this).apply{hint=h;setText(v);textSize=16f}
  private fun task(fn:suspend()->Unit){lifecycleScope.launch{try{fn()}catch(e:Exception){toast(e.message?: "Request failed")}}}
- private suspend fun prepareData(){dataInitMutex.withLock{SnapshotSeeder.seed(assets,dao);sync.sync()}}
+ private suspend fun prepareData():Long=dataInitMutex.withLock{SnapshotSeeder.seed(assets,dao);sync.sync()}
  private fun toast(s:String){Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
  private fun login(){pageStack.clear();screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
  private var adConfig=JSONObject()
