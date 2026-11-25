@@ -6,10 +6,13 @@ import org.json.JSONObject
 import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class Session(val access:String,val refresh:String,val expiresAt:Long)
 class SupabaseApi {
  @Volatile var session:Session?=null
+ private val refreshMutex=Mutex()
  private suspend fun request(path:String,method:String="GET",body:String?=null,auth:Boolean=true,prefer:String?=null):String=withContext(Dispatchers.IO) {
   val c=URL(Config.SUPABASE_URL+path).openConnection() as HttpURLConnection
   try {
@@ -37,7 +40,7 @@ class SupabaseApi {
   if(user.optString("id")!=Config.OWNER_UID)throw IllegalStateException("This account is not the authorized owner.")
   return Session(j.getString("access_token"),j.getString("refresh_token"),System.currentTimeMillis()/1000+j.optLong("expires_in",3600)).also{session=it}
  }
- private suspend fun ensureToken(){if((session?.expiresAt?:0L)<System.currentTimeMillis()/1000+90)refresh()}
+ private suspend fun ensureToken(){refreshMutex.withLock{if((session?.expiresAt?:0L)<System.currentTimeMillis()/1000+90)refresh()}}
  suspend fun publish(body:JSONObject):JSONObject {ensureToken();return JSONObject(request("/functions/v1/mdm-publish","POST",body.toString()))}
  suspend fun history(body:JSONObject):JSONObject {ensureToken();return JSONObject(request("/functions/v1/mdm-history","POST",body.toString()))}
  suspend fun syncStatus():JSONArray=JSONArray(request("/functions/v1/bustime-data-sync?action=status","GET",null,false))
