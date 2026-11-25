@@ -542,7 +542,50 @@ class MainActivity:ComponentActivity() {
   }
  }
  private fun placeList(){screen("Bus Stop List");val q=input("Search stops");add(q);task{prepareData();showPlaces("")};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{showPlaces(s.toString())}};override fun afterTextChanged(e:android.text.Editable?){}})}
- private suspend fun showPlaces(q:String){val rows=dao.allPlaces().filter{it.id.contains(q,true)||it.names.contains(q,true)};body?.removeViews(1,(body?.childCount?:1)-1);add(countLabel(rows.size,"bus stops"));if(rows.isEmpty())add(text("No matching bus stops",14));rows.forEach{p->val names=JSONObject(p.names);val meta=listOf(names.optString("hi"),names.optString("pa"),"ID: ${p.id}").filter{it.isNotBlank()}.joinToString("  ·  ");add(panelCard(placeName(p),meta){screen(placeName(p),true,""){placeList()};add(text("Bus stop details",13,true));add(text("English: "+names.optString("en").ifBlank{"—"}));add(text("Hindi: "+names.optString("hi").ifBlank{"—"}));add(text("Punjabi: "+names.optString("pa").ifBlank{"—"}));add(text("Place ID: "+p.id,12));add(button("Correction / Edit Stop"){editPlace(p,backAction={placeList()})});add(button("Delete this stop",false){task{val used=dao.allRoutes().filter{r->val j=JSONObject(r.payload);j.optString("from")==p.id||j.optString("to")==p.id||(j.optJSONArray("stops")?.let{a->(0 until a.length()).any{a.optJSONObject(it)?.optString("place")==p.id}}?:false)};if(used.isNotEmpty())toast("Cannot delete this stop: "+used.joinToString{it.id})else confirm("Move this stop to Recycle Bin?"){task{val payload=JSONObject(p.payload);val res=publishChange("place",p.id,"delete",payload);toast("Published successfully · revision "+res.optLong("revision"));prepareData();placeList()}}})})}}
+  private suspend fun showPlaces(q:String) {
+   val rows = dao.allPlaces().filter { it.id.contains(q, true) || it.names.contains(q, true) }
+   body?.removeViews(1, (body?.childCount ?: 1) - 1)
+   add(countLabel(rows.size, "bus stops"))
+   if (rows.isEmpty()) add(text("No matching bus stops", 14))
+   rows.forEach { p ->
+    val names = JSONObject(p.names)
+    val meta = listOf(names.optString("hi"), names.optString("pa"), "ID: ${p.id}")
+     .filter { it.isNotBlank() }.joinToString("  ·  ")
+    add(panelCard(placeName(p), meta) {
+     screen(placeName(p), true, "") { placeList() }
+     add(text("Bus stop details", 13, true))
+     add(text("English: " + names.optString("en").ifBlank { "—" }))
+     add(text("Hindi: " + names.optString("hi").ifBlank { "—" }))
+     add(text("Punjabi: " + names.optString("pa").ifBlank { "—" }))
+     add(text("Place ID: " + p.id, 12))
+     add(button("Correction / Edit Stop") { editPlace(p, backAction = { placeList() }) })
+     add(button("Delete this stop", false) {
+      task {
+       val used = dao.allRoutes().filter { r ->
+        val j = JSONObject(r.payload)
+        j.optString("from") == p.id || j.optString("to") == p.id ||
+         (j.optJSONArray("stops")?.let { a ->
+          (0 until a.length()).any { a.optJSONObject(it)?.optString("place") == p.id }
+         } ?: false)
+       }
+       if (used.isNotEmpty()) {
+        toast("Cannot delete this stop: " + used.joinToString { it.id })
+       } else {
+        confirm("Move this stop to Recycle Bin?") {
+         task {
+          val payload = JSONObject(p.payload)
+          val res = publishChange("place", p.id, "delete", payload)
+          toast("Published successfully · revision " + res.optLong("revision"))
+          prepareData()
+          placeList()
+         }
+        }
+       }
+      }
+     })
+    })
+   }
+  }
  private fun editPlace(old:PlaceRow?,prefillKind:Int?=null,prefillEn:String?=null,prefillHi:String?=null,prefillPa:String?=null,backAction:(()->Unit)?=null){
   screen(if(old==null)"Add Bus Stop" else "Correction Bus Stop",true,"",backAction)
   add(text("Select place type",13,true));val kind=Spinner(this);val labels=listOf("Bus Stand","Village","City","Other Place")
