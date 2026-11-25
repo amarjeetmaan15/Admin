@@ -16,7 +16,7 @@ class SupabaseApi {
  private suspend fun request(path:String,method:String="GET",body:String?=null,auth:Boolean=true,prefer:String?=null):String=withContext(Dispatchers.IO) {
   val c=URL(Config.SUPABASE_URL+path).openConnection() as HttpURLConnection
   try {
-   c.requestMethod=method;c.connectTimeout=15000;c.readTimeout=20000
+   c.requestMethod=method;c.connectTimeout=15000;c.readTimeout=20000;c.setRequestProperty("Cache-Control","no-store")
    c.setRequestProperty("apikey",Config.SUPABASE_PUBLISHABLE_KEY);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Accept","application/json");if(prefer!=null)c.setRequestProperty("Prefer",prefer)
    if(auth)session?.let{c.setRequestProperty("Authorization","Bearer "+it.access)}
    if(body!=null){c.doOutput=true;c.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}}
@@ -79,8 +79,12 @@ class SupabaseApi {
  suspend fun saveAdSettings(config:JSONObject){ensureToken();request("/rest/v1/ad_settings?on_conflict=id","POST",JSONObject().put("id",1).put("config",config).put("updated_at",java.time.Instant.now().toString()).toString(),true,"resolution=merge-duplicates,return=minimal")}
  suspend fun busOperators():JSONArray {
   ensureToken()
-  return JSONArray(request("/rest/v1/bus_operators?select=id,operator_name,service_name,bus_types,location,phone,whatsapp,details,active&active=eq.true&order=service_name.asc&limit=500","GET"))
+  return JSONArray(request("/rest/v1/bus_operators?select=*&order=service_name.asc&limit=500","GET"))
  }
+ suspend fun createBusOperator(payload:JSONObject){ensureToken();request("/rest/v1/bus_operators","POST",payload.toString(),true,"return=minimal")}
+ suspend fun updateBusOperator(id:String,payload:JSONObject){ensureToken();request("/rest/v1/bus_operators?id=eq."+java.net.URLEncoder.encode(id,"UTF-8"),"PATCH",payload.toString(),true,"return=minimal")}
+ suspend fun setBusOperatorActive(id:String,active:Boolean){ensureToken();request("/rest/v1/bus_operators?id=eq."+java.net.URLEncoder.encode(id,"UTF-8"),"PATCH",JSONObject().put("active",active).toString(),true,"return=minimal")}
+ suspend fun deleteBusOperator(id:String){ensureToken();request("/rest/v1/bus_operators?id=eq."+java.net.URLEncoder.encode(id,"UTF-8"),"DELETE",null,true,"return=minimal")}
  suspend fun addBusOperatorIfMissing(payload:JSONObject):Boolean {
   ensureToken()
   val rows=busOperators()
