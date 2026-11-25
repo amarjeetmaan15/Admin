@@ -32,6 +32,7 @@ class MainActivity:ComponentActivity() {
  private lateinit var dao:LocalDao
  private lateinit var sync:SyncEngine
  private val dataInitMutex=Mutex()
+ private var currentMdmRevision=0L
  private var lang=UiLanguage.EN
  private var body:LinearLayout?=null
  private fun tr(a:String,b:String,c:String)=uiText(a,b,c,lang)
@@ -94,7 +95,7 @@ class MainActivity:ComponentActivity() {
  }
  private fun input(h:String,v:String="")=EditText(this).apply{hint=h;setText(v);textSize=16f}
  private fun task(fn:suspend()->Unit){lifecycleScope.launch{try{fn()}catch(e:Exception){toast(e.message?: "Request failed")}}}
- private suspend fun prepareData():Long=dataInitMutex.withLock{SnapshotSeeder.seed(assets,dao);sync.sync()}
+ private suspend fun prepareData():Long=dataInitMutex.withLock{SnapshotSeeder.seed(assets,dao);sync.sync()}.also{currentMdmRevision=it}
  private fun toast(s:String){Toast.makeText(this,s,Toast.LENGTH_LONG).show()}
  private fun login(){pageStack.clear();screen("Sign in",false);body?.addView(ImageView(this).apply{setImageResource(R.drawable.admin_logo);scaleType=ImageView.ScaleType.FIT_CENTER},LinearLayout.LayoutParams(dp(104),dp(104)));add(text("Bustime Admin",24,true));add(text("Private owner access",18,true));val email=input("Email");val pass=input("Password");pass.inputType=129;add(email);add(pass);add(button("Sign in"){task{val s=api.signIn(email.text.toString().trim(),pass.text.toString());getPreferences(0).edit().putString("access",s.access).putString("refresh",s.refresh).putLong("expiry",s.expiresAt).apply();home()}})}
  private var adConfig=JSONObject()
@@ -347,7 +348,28 @@ class MainActivity:ComponentActivity() {
    add(button("Delete route",false){confirm("Move this route to Recycle Bin?"){task{val res=publishChange("route",r.id,"delete",j);toast("Published successfully · revision "+res.optLong("revision"));prepareData();routeList()}}})
   }
  }
- private suspend fun publishChange(type:String,id:String,op:String,payload:JSONObject)=api.publish(JSONObject().put("action","publish").put("changes",JSONArray().put(JSONObject().put("entity_type",type).put("entity_id",id).put("operation",op).put("payload",payload))))
+ private suspend fun publishSharedChanges(changes:JSONArray):JSONObject{
+  if(currentMdmRevision<=0L)prepareData()
+  val latest=api.publish(JSONObject().put("action","list"))
+  val state=latest.optJSONObject("state")?:throw IllegalStateException("Could not verify the latest published revision. Nothing was published; retry when connected.")
+  val serverRevision=state.optLong("revision",-1L)
+  if(serverRevision<0L)throw IllegalStateException("The server did not return a valid publish revision.")
+  if(serverRevision!=currentMdmRevision)throw IllegalStateException("This Admin app is out of date (device revision $currentMdmRevision, server revision $serverRevision). Refresh the latest data before publishing. Your current edits have not been published.")
+  val result=api.publish(JSONObject().put("action","publish").put("source","android_app").put("expected_revision",serverRevision).put("changes",changes))
+  currentMdmRevision=maxOf(currentMdmRevision,result.optLong("revision",serverRevision))
+  return result
+ }
+ private suspend fun restoreRecycleItem(id:Long):JSONObject{
+  if(currentMdmRevision<=0L)prepareData()
+  val latest=api.publish(JSONObject().put("action","list"))
+  val state=latest.optJSONObject("state")?:throw IllegalStateException("Could not verify the latest published revision. Nothing was restored.")
+  val serverRevision=state.optLong("revision",-1L)
+  if(serverRevision<0L||serverRevision!=currentMdmRevision)throw IllegalStateException("This Admin app is out of date. Refresh the latest data before restoring.")
+  val result=api.publish(JSONObject().put("action","recycle-restore").put("id",id).put("source","android_app").put("expected_revision",serverRevision))
+  currentMdmRevision=maxOf(currentMdmRevision,result.optLong("revision",serverRevision))
+  return result
+ }
+ private suspend fun publishChange(type:String,id:String,op:String,payload:JSONObject)=publishSharedChanges(JSONArray().put(JSONObject().put("entity_type",type).put("entity_id",id).put("operation",op).put("payload",payload)))
 
  private fun correctionRouteList(){routeListForCorrection()}
  private fun routeListForCorrection(){screen("Correction Route");val q=input("Search routes");add(q);task{prepareData();renderRouteRows(q.text.toString(),true)};q.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){};override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){lifecycleScope.launch{renderRouteRows(s.toString(),true)}};override fun afterTextChanged(e:android.text.Editable?){}})}
@@ -460,7 +482,7 @@ class MainActivity:ComponentActivity() {
     val changes=JSONArray()
     createdPlaces.forEach{(id,placePayload)->changes.put(JSONObject().put("entity_type","place").put("entity_id",id).put("operation","upsert").put("payload",placePayload))}
     changes.put(JSONObject().put("entity_type","route").put("entity_id",stableRouteId).put("operation","upsert").put("payload",payload))
-    val res=api.publish(JSONObject().put("action","publish").put("changes",changes))
+    val res=publishSharedChanges(changes)
     var approvalWarning=""
     if(reviewRequest!=null){
      try{api.publish(JSONObject().put("action","review-status").put("table",reviewRequest.first).put("id",reviewRequest.second.optString("id")).put("status","approved"))}
@@ -808,7 +830,7 @@ class MainActivity:ComponentActivity() {
     val payload=x.optJSONObject("payload")?:JSONObject();val label=when(type){"route"->{val places=dao.allPlaces();(places.firstOrNull{it.id==payload.optString("from")}?.let{placeName(it)}?:payload.optString("from"))+" → "+(places.firstOrNull{it.id==payload.optString("to")}?.let{placeName(it)}?:payload.optString("to"))};"place"->payload.optJSONObject("name")?.optString("en").orEmpty().ifBlank{entity};else->entity}
     val card=LinearLayout(this).apply{orientation=1;setPadding(dp(14),dp(12),dp(14),dp(12));background=GradientDrawable().apply{setColor(Color.WHITE);cornerRadius=dp(15).toFloat();setStroke(dp(1),0xffe1e7ef.toInt())}}
     card.addView(text(label.ifBlank{entity},16,true));card.addView(text(type.uppercase()+" · ID: "+entity,12));card.addView(text("Deleted: "+deleted,11))
-    val actions=LinearLayout(this).apply{orientation=0};actions.addView(button("Restore"){task{val r=api.publish(JSONObject().put("action","recycle-restore").put("id",id));toast("Restored · revision "+r.optLong("revision"));prepareData();recycle()}},LinearLayout.LayoutParams(0,dp(46),1f))
+    val actions=LinearLayout(this).apply{orientation=0};actions.addView(button("Restore"){task{val r=restoreRecycleItem(id);toast("Restored · revision "+r.optLong("revision"));prepareData();recycle()}},LinearLayout.LayoutParams(0,dp(46),1f))
     actions.addView(button("Permanent Delete",false){confirm("Permanently delete this item? This cannot be undone."){task{api.publish(JSONObject().put("action","recycle-purge").put("id",id));toast("Permanently deleted");recycle()}}},LinearLayout.LayoutParams(0,dp(46),1f))
     card.addView(actions);add(card)
    }
