@@ -545,22 +545,79 @@ class MainActivity:ComponentActivity() {
  private var historyHasMore=false
  private var historyState:JSONObject?=null
  private var historyList:LinearLayout?=null
+ private var historyMonitorList:LinearLayout?=null
  private var historyStatus:TextView?=null
  private var historyLoadButton:Button?=null
  private var historyLoading=false
+ private var historyMonitorLoading=false
+ private var historyMonitorStatusValue="pending"
+ private var historyMonitorState:JSONObject?=null
+ private var historyMonitorError=""
+ private var historyFilterOperation=""
+ private var historyFilterType=""
+ private var historyFilterSource=""
+ private var historyFilterSearch=""
+ private var historyFilterFrom=""
+ private var historyFilterTo=""
  private var routePublishInFlight=false
  private fun history(reset:Boolean){
   if(reset){historyItems.clear();historyHasMore=false;historyState=null}
-  screen("History",true,"Complete publishing activity · newest changes first")
+  screen("History",true,"Permanent record of published Place and Route changes")
   val actions=LinearLayout(this).apply{orientation=0}
-  actions.addView(toolbarAction("↻  Refresh"){history(true)},LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(8)})
+  actions.addView(toolbarAction("↻  Refresh All"){history(true)},LinearLayout.LayoutParams(0,dp(42),1f).apply{marginEnd=dp(8)})
   actions.addView(toolbarAction("Latest first"){history(true)},LinearLayout.LayoutParams(0,dp(42),1f))
   add(actions)
+
+  add(text("DEVICE SYNC MONITORING",15,true))
+  add(text("Device sync health and failed changes reported by installed Bustime devices.",12).apply{setTextColor(0xff64748b.toInt())})
+  val monitorBar=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL}
+  val monitorStatus=Spinner(this)
+  monitorStatus.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("Pending errors","All errors","Resolved","Superseded"))
+  monitorStatus.setSelection(when(historyMonitorStatusValue){"all"->1;"resolved"->2;"superseded"->3;else->0})
+  monitorBar.addView(monitorStatus,LinearLayout.LayoutParams(0,dp(46),1f).apply{marginEnd=dp(8)})
+  monitorBar.addView(toolbarAction("Refresh Monitor"){historyMonitorStatusValue=listOf("pending","all","resolved","superseded")[monitorStatus.selectedItemPosition];loadHistoryMonitor()},LinearLayout.LayoutParams(0,dp(42),1f))
+  add(monitorBar)
+  historyMonitorList=LinearLayout(this).apply{orientation=1}
+  add(historyMonitorList!!)
+
+  add(text("FILTER HISTORY",15,true))
+  fun filterSpinner(values:List<String>,selected:Int):Spinner{
+   val s=Spinner(this);s.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,values);s.setSelection(selected.coerceIn(0,values.lastIndex));return s
+  }
+  val operation=filterSpinner(listOf("All actions","Add / Update","Delete"),when(historyFilterOperation){"upsert"->1;"delete"->2;else->0})
+  val type=filterSpinner(listOf("All types","Route","Place"),when(historyFilterType){"route"->1;"place"->2;else->0})
+  val source=filterSpinner(listOf("All sources","Web Admin","Android App","Legacy"),when(historyFilterSource){"web_admin"->1;"android_app"->2;"legacy"->3;else->0})
+  add(text("Action",12,true));add(operation)
+  add(text("Record type",12,true));add(type)
+  add(text("Source",12,true));add(source)
+  val search=input("Search by Route / Place ID",historyFilterSearch)
+  add(text("Record ID",12,true));add(search)
+  val from=input("YYYY-MM-DD",historyFilterFrom)
+  val to=input("YYYY-MM-DD",historyFilterTo)
+  add(text("From date",12,true));add(from)
+  add(text("To date",12,true));add(to)
+  val filterActions=LinearLayout(this).apply{orientation=0}
+  filterActions.addView(button("Apply Filters",true){
+   historyFilterOperation=listOf("","upsert","delete")[operation.selectedItemPosition]
+   historyFilterType=listOf("","route","place")[type.selectedItemPosition]
+   historyFilterSource=listOf("","web_admin","android_app","legacy")[source.selectedItemPosition]
+   historyFilterSearch=search.text.toString().trim()
+   historyFilterFrom=from.text.toString().trim()
+   historyFilterTo=to.text.toString().trim()
+   historyItems.clear();historyHasMore=false;historyState=null;loadHistoryPage(true)
+  },LinearLayout.LayoutParams(0,dp(46),1f).apply{marginEnd=dp(6)})
+  filterActions.addView(button("Clear Filters",false){
+   historyFilterOperation="";historyFilterType="";historyFilterSource="";historyFilterSearch="";historyFilterFrom="";historyFilterTo=""
+   history(true)
+  },LinearLayout.LayoutParams(0,dp(46),1f).apply{marginStart=dp(6)})
+  add(filterActions)
+
   historyStatus=text("Loading history…",13).apply{setTextColor(0xff64748b.toInt())}
   add(historyStatus!!)
   historyList=LinearLayout(this).apply{orientation=1}
   add(historyList!!)
   loadHistoryPage(reset)
+  loadHistoryMonitor()
  }
  private fun loadHistoryPage(reset:Boolean){
   if(historyLoading)return
@@ -569,9 +626,24 @@ class MainActivity:ComponentActivity() {
   historyStatus?.text=if(reset)"Loading latest history…" else "Loading older history…"
   lifecycleScope.launch{
    try{
-    val before=if(!reset)historyItems.lastOrNull()?.optLong("revision") else null
     val req=JSONObject().put("limit",200)
-    if(before!=null&&before>0)req.put("before_revision",before)
+    if(!reset){
+     val last=historyItems.lastOrNull()
+     if(last!=null){
+      val revision=last.optLong("revision")
+      if(revision>0){
+       req.put("before_revision",revision)
+       req.put("before_entity_type",last.optString("entity_type"))
+       req.put("before_entity_id",last.optString("entity_id"))
+      }
+     }
+    }
+    if(historyFilterOperation.isNotBlank())req.put("filter_operation",historyFilterOperation)
+    if(historyFilterType.isNotBlank())req.put("filter_entity_type",historyFilterType)
+    if(historyFilterSource.isNotBlank())req.put("filter_source",historyFilterSource)
+    if(historyFilterSearch.isNotBlank())req.put("filter_search",historyFilterSearch)
+    if(historyFilterFrom.isNotBlank())req.put("filter_from",historyFilterFrom)
+    if(historyFilterTo.isNotBlank())req.put("filter_to",historyFilterTo)
     val result=api.history(req)
     val rows=result.optJSONArray("items")?:JSONArray()
     val known=historyItems.map{historyIdentity(it)}.toHashSet()
@@ -593,6 +665,67 @@ class MainActivity:ComponentActivity() {
    }
   }
  }
+ private fun loadHistoryMonitor(){
+  if(historyMonitorLoading)return
+  historyMonitorLoading=true
+  historyMonitorList?.removeAllViews()
+  historyMonitorList?.addView(text("Loading device sync information…",12))
+  lifecycleScope.launch{
+   try{
+    val result=api.history(JSONObject().put("action","sync-monitor").put("status",historyMonitorStatusValue))
+    historyMonitorState=result
+    historyMonitorError=""
+   }catch(e:Exception){historyMonitorError=e.message?: "Request failed"}
+   finally{historyMonitorLoading=false;renderHistoryMonitor()}
+  }
+ }
+ private fun renderHistoryMonitor(){
+  val list=historyMonitorList?:return
+  list.removeAllViews()
+  val state=historyMonitorState
+  if(historyMonitorError.isNotBlank()){
+   list.addView(text("Could not load Sync Monitoring: $historyMonitorError",12).apply{setTextColor(0xffb42318.toInt())})
+   return
+  }
+  if(state==null){list.addView(text("No sync monitor data available.",12));return}
+  val devices=state.optJSONArray("devices")?:JSONArray()
+  val errors=state.optJSONArray("errors")?:JSONArray()
+  val serverRevision=state.optJSONObject("state")?.optLong("revision")?:0L
+  val pending=(0 until errors.length()).count{errors.optJSONObject(it)?.optString("status")=="pending"}
+  val failed=(0 until devices.length()).count{!devices.optJSONObject(it)?.optString("last_error").isNullOrBlank()}
+  list.addView(text("Devices: $devices.length()  ·  Pending errors: $pending  ·  Devices with errors: $failed  ·  Server revision: $serverRevision",12,true))
+  list.addView(text("DEVICES",12,true).apply{setPadding(0,dp(8),0,dp(3))})
+  if(devices.length()==0)list.addView(text("No device sync reports received yet.",12))
+  for(i in 0 until devices.length()){
+   val d=devices.optJSONObject(i)?:continue
+   val row=LinearLayout(this).apply{orientation=1;setPadding(dp(10),dp(8),dp(10),dp(8));background=GradientDrawable().apply{setColor(0xfff5f7fa.toInt());cornerRadius=dp(10).toFloat()}}
+   row.addView(text("Device: "+d.optString("device_id","—"),12,true))
+   row.addView(text("App: "+d.optString("app_version","—")+"  ·  Last sync revision: "+d.optLong("last_success_revision"),11))
+   row.addView(text("Last seen: "+historyDate(d.optString("last_seen_at"))+"  ·  Error: "+d.optString("last_error").ifBlank{"—"},11))
+   list.addView(row,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(6)})
+  }
+  list.addView(text("FAILED CHANGE RECORDS",12,true).apply{setPadding(0,dp(8),0,dp(3))})
+  if(errors.length()==0)list.addView(text("No matching sync errors.",12))
+  for(i in 0 until errors.length()){
+   val e=errors.optJSONObject(i)?:continue
+   val device=e.optString("device_id")
+   val revision=e.optLong("revision")
+   val entityType=e.optString("entity_type")
+   val entityId=e.optString("entity_id")
+   val row=LinearLayout(this).apply{orientation=1;setPadding(dp(10),dp(8),dp(10),dp(8));background=GradientDrawable().apply{setColor(0xfffff7ed.toInt());cornerRadius=dp(10).toFloat()}}
+   row.addView(text(e.optString("status").uppercase()+" · Revision $revision",12,true))
+   row.addView(text("Device: $device  ·  $entityType · $entityId",11))
+   row.addView(text(e.optString("error_code")+": "+e.optString("error_message"),11))
+   row.addView(text("Attempts: "+e.optInt("attempts")+"  ·  Next retry: "+historyDate(e.optString("next_retry_at")),11))
+   if(e.optString("status")=="pending")row.addView(button("Retry now"){task{
+    api.history(JSONObject().put("action","sync-retry").put("device_id",device).put("revision",revision).put("entity_type",entityType).put("entity_id",entityId))
+    toast("Retry scheduled.")
+    loadHistoryMonitor()
+   }})
+   list.addView(row,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(6)})
+  }
+ }
+ private fun historyIdentity(row:JSONObject):String=listOf(row.optString("id").ifBlank{row.optString("revision")+"|"+row.optString("entity_type")+"|"+row.optString("entity_id")+"|"+row.optString("operation")+"|"+row.optString("created_at")},row.optJSONObject("before")?.toString().orEmpty(),row.optJSONObject("payload")?.toString().orEmpty()).joinToString("|")
  private fun historyIdentity(row:JSONObject):String=listOf(row.optString("revision"),row.optString("entity_type"),row.optString("entity_id"),row.optString("operation"),row.optString("created_at"),row.optString("id"),row.optJSONObject("before")?.toString().orEmpty(),row.optJSONObject("payload")?.toString().orEmpty()).joinToString("|")
  private fun historyChanged(row:JSONObject):String{
   if(row.optString("operation")=="delete")return "Moved to Recycle Bin"
@@ -650,6 +783,11 @@ class MainActivity:ComponentActivity() {
    card.addView(text(type+"  ·  "+operation,12,true).apply{setTextColor(0xff245b8f.toInt());setPadding(0,dp(5),0,dp(7))})
    card.addView(text("Record ID",10,true).apply{setTextColor(0xff64748b.toInt())})
    card.addView(text(row.optString("entity_id").ifBlank{"Not available"},12).apply{setTextIsSelectable(true);setPadding(0,0,0,dp(8))})
+   val actor=row.optString("admin_email").ifBlank{row.optString("actor").ifBlank{row.optString("admin_id")}}
+   if(actor.isNotBlank()){
+    card.addView(text("ADMIN",10,true).apply{setTextColor(0xff64748b.toInt())})
+    card.addView(text(actor,12).apply{setTextIsSelectable(true);setPadding(0,0,0,dp(8))})
+   }
    card.addView(text("WHAT CHANGED",10,true).apply{setTextColor(0xff64748b.toInt())})
    card.addView(text(historyChanged(row),13).apply{setTextIsSelectable(true);setPadding(0,dp(3),0,0)})
    list.addView(card,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(10)})
